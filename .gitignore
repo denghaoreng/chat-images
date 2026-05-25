@@ -1,0 +1,15 @@
+# 系统文件
+Thumbs.db
+.DS_Store
+*.swp
+*.swo
+
+# 编辑器
+.vscode/
+.idea/
+
+# 日志
+*.log
+
+# 图片缓存（如果不需要追踪原始图片）
+# images/*

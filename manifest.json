@@ -1,0 +1,17 @@
+{
+    "display_name": "聊天图片",
+    "loading_order": 10,
+    "js": "index.js",
+    "css": "style.css",
+    "author": "YourName",
+    "version": "1.0.0",
+    "homePage": "",
+    "auto_update": false,
+    "hooks": {
+        "activate": "init",
+        "install": "onInstall",
+        "delete": "onDelete",
+        "enable": "onEnable",
+        "disable": "onDisable"
+    }
+}
