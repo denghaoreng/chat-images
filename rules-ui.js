@@ -73,12 +73,8 @@ export function renderRuleList() {
                         <span style="font-size:0.75em;opacity:0.6;">排</span>
                         <input class="rule-duration text_pole" type="number" min="0" step="0.1" value="${rule.duration ?? 2}" style="width:36px;text-align:center;font-size:0.85em;margin-left:4px;" placeholder="秒" title="停留秒数：0=永久">
                         <span style="font-size:0.75em;opacity:0.6;margin-left:2px;">秒</span>
-                        <button class="rule-add-image menu_button menu_button_icon" data-rule-id="${rule.id}" title="上传图片">
-                            <i class="fa-solid fa-upload"></i>
-                        </button>
-                        <button class="rule-add-images-batch menu_button menu_button_icon" data-rule-id="${rule.id}" title="批量上传图片">
-                            <i class="fa-solid fa-images"></i>
-                        </button>
+                        <div class="rule-add-image mes_button fa-solid fa-paperclip" data-rule-id="${rule.id}" title="上传图片" tabindex="0" role="button"></div>
+                        <div class="rule-add-images-batch mes_button fa-solid fa-images" data-rule-id="${rule.id}" title="批量上传图片" tabindex="0" role="button"></div>
                         <button class="rule-regex-help menu_button menu_button_icon" title="正则表达式手册">
                             <i class="fa-solid fa-book"></i>
                         </button>

@@ -232,12 +232,45 @@
 }
 
 /* --- 工具按钮组 --- */
-#chat-images-rule-list .rule-add-image {
-    font-size: 0.88em;
+/* 纸夹上传按钮（仿 ST 原生 mes_button 风格） */
+#chat-images-rule-list .rule-add-image,
+#chat-images-rule-list .rule-add-images-batch {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    font-size: 0.9em;
+    color: var(--messageButtonColor, #ccc);
+    background: var(--messageButtonBG, transparent);
+    border-radius: 4px;
+    cursor: pointer;
+    transition: color 0.15s, background 0.15s;
+    user-select: none;
+}
+
+#chat-images-rule-list .rule-add-image:hover,
+#chat-images-rule-list .rule-add-images-batch:hover {
+    color: var(--messageButtonColorHover, #fff);
+    background: var(--messageButtonBG_Hover, rgba(128,128,128,0.2));
 }
 
 #chat-images-add-rule {
     font-size: 0.95em;
+}
+
+/* 图片放大（捏合缩放） */
+.chat-images-enlarge-overlay {
+    cursor: zoom-out;
+}
+
+.chat-images-enlarged {
+    will-change: transform;
+    cursor: zoom-in;
+}
+
+.chat-images-enlarged.zoomed {
+    cursor: zoom-out;
 }
 
 /* 图片插入到消息后由 SillyTavern 自带样式渲染，无需额外样式 */
