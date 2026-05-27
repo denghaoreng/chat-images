@@ -702,7 +702,7 @@ async function showBatchAddPopup() {
     let uploadedImages = [];
 
     const popupContent = $(`
-    <div id="chat-images-batch-popup" style="font-size:0.92em;min-width:500px;">
+    <div id="chat-images-batch-popup" style="font-size:0.92em;">
         <style>
             .batch-thumb { width:60px; height:60px; object-fit:cover; border-radius:4px; border:1px solid var(--borderColor); cursor:pointer; }
             .batch-thumb:hover { opacity:0.7; }
@@ -733,7 +733,6 @@ async function showBatchAddPopup() {
     const popup = callGenericPopup(popupContent, POPUP_TYPE.TEXT, '', {
         okButton: '确认创建',
         cancelButton: '取消',
-        wide: true,
         allowVerticalScrolling: true,
     });
 
