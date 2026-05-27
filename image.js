@@ -19,9 +19,9 @@ export function generateUniqueFilename(originalName) {
 }
 
 export async function handleImageUpload(ruleId) {
+    // 不使用 accept 属性，避免 Android 强制打开相册而非文件管理器
     const fileInput = document.createElement('input');
     fileInput.type = 'file';
-    fileInput.accept = 'image/png,image/jpeg,image/gif,image/webp';
 
     fileInput.onchange = async function (e) {
         const file = e.target.files[0];
@@ -85,10 +85,10 @@ export async function handleImageUpload(ruleId) {
 }
 
 export async function handleBatchImageUpload(ruleId) {
+    // 不使用 accept 属性，避免 Android 强制打开相册
     const fileInput = document.createElement('input');
     fileInput.type = 'file';
     fileInput.multiple = true;
-    fileInput.accept = 'image/png,image/jpeg,image/gif,image/webp';
 
     fileInput.onchange = async function (e) {
         const files = Array.from(e.target.files);

@@ -172,12 +172,11 @@ export async function showBatchAddPopup() {
         allowVerticalScrolling: true,
     });
 
-    // 上传按钮
+    // 上传按钮（不使用 accept，避免 Android 强制打开相册）
     $('#batch-upload-btn').on('click', function () {
         const input = document.createElement('input');
         input.type = 'file';
         input.multiple = true;
-        input.accept = 'image/png,image/jpeg,image/gif,image/webp';
         input.onchange = function (e) {
             const files = Array.from(e.target.files);
             const allowedTypes = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];

@@ -19,6 +19,8 @@
 - [B010: 正则匹配 `文档{2}` 不工作](#b010-正则匹配-文档2-不工作)
 - [B011: 规则折叠状态刷新后丢失](#b011-规则折叠状态刷新后丢失)
 - [B012: 规则顺序未递增](#b012-规则顺序未递增)
+- [B013: Android 上只能打开相册无法选择文件](#b013-android-上只能打开相册无法选择文件)
+- [B014: 图片放大无法双指缩放](#b014-图片放大无法双指缩放)
 
 ---
 
@@ -353,24 +355,164 @@ function addRule(rule) {
 
 ---
 
+## B013: Android 上只能打开相册无法选择文件
+
+**发现时间：** 2026-05-28
+**严重程度：** 🟡 中（Android 用户体验）
+
+### 现象
+在 Android 上点击上传图片按钮，只能打开系统相册/图库，无法打开文件管理器浏览文件夹选择图片。而 ST 原生的附件按钮（纸夹）可以正常打开文件管理器。
+
+### 根因分析
+文件输入框添加了 `accept` 属性限制了图片类型：
+```html
+<input type="file" accept="image/png,image/jpeg,image/gif,image/webp">
+```
+
+Android 浏览器（Chrome/系统 WebView）的行为差异：
+- `<input type="file">` → 打开**文件管理器**（文件夹浏览）
+- `<input type="file" accept="image/*">` → 打开**相册/媒体选择器**
+- `<input type="file" accept="image/png,image/jpeg,...">` → 同样打开相册
+
+ST 原生的文件输入框没有 `accept` 属性：
+```html
+<input id="embed_file_input" type="file" multiple hidden>
+```
+
+### 修复方案
+移除 `accept` 属性，类型验证改为在客户端 JS 中做：
+```javascript
+// 不再设置 accept 属性
+const fileInput = document.createElement('input');
+fileInput.type = 'file';
+
+// 上传后依然做客户端验证
+const allowedTypes = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
+if (!allowedTypes.includes(file.type)) {
+    toastr.warning('仅支持 PNG、JPEG、GIF、WebP 格式的图片');
+    return;
+}
+```
+
+同样修复批量上传 `handleBatchImageUpload` 中的 `accept` 属性。
+
+---
+
+## B014: 图片放大无法双指缩放
+
+**发现时间：** 2026-05-28
+**严重程度：** 🟡 中（移动端体验缺失）
+
+### 现象
+在图片放大查看模式下，移动端用户无法通过双指捏合手势进行缩放操作，也无法在放大后拖拽平移查看图片细节。
+
+### 根因分析
+原 `chatImageEnlarge()` 实现仅创建了一个静态的 `<img>` 元素，没有任何触摸事件处理：
+
+```javascript
+export function chatImageEnlarge(imgEl) {
+    const overlay = document.createElement('div');
+    overlay.style.cssText = '...';
+    const enlargedImg = document.createElement('img');
+    enlargedImg.src = imgEl.src;
+    overlay.appendChild(enlargedImg);
+    overlay.addEventListener('click', function () {
+        document.body.removeChild(overlay);
+    });
+    document.body.appendChild(overlay);
+}
+```
+
+缺少以下能力：
+1. ❌ 无 `touchstart`/`touchmove`/`touchend` 事件处理
+2. ❌ 无双指距离计算（getDistance）
+3. ❌ 无 CSS transform（scale + translate）变化
+4. ❌ 无 `touch-action: none` 阻止浏览器默认手势
+5. ❌ 无鼠标滚轮缩放支持（桌面端）
+
+### 修复方案
+完全重写 `chatImageEnlarge()`，实现完整的触摸缩放平移系统：
+
+**架构变更：**
+- 引入图片容器 `<div>` 包裹 `<img>`，容器响应触摸事件
+- 使用 `transform: translate() scale()` 实现缩放平移
+- `touch-action: none` 阻止浏览器默认手势干扰
+
+**支持的操作：**
+
+| 操作 | 平台 | 实现方式 |
+|------|------|---------|
+| 双指捏合缩放 | 📱 移动端 | `touchstart` 记录初始距离，`touchmove` 按比例计算新 scale（1x~6x） |
+| 单指拖拽平移 | 📱 移动端 | 放大后（scale>1）单指 touch 计算 delta 偏移 |
+| 双击切换缩放 | 📱 移动端 | 点击时间戳检测 <400ms，切换 1x ↔ 2.5x |
+| 鼠标滚轮缩放 | 🖥️ 桌面端 | `wheel` 事件，deltaY > 0 缩小，< 0 放大 |
+| 单击切换缩放 | 🖥️ 桌面端 | `click` 事件切换 1x ↔ 2.5x |
+| 点击遮罩关闭 | 通用 | 遮罩层 `click` 移除 DOM |
+
+**关键代码：**
+```javascript
+// 缩放平移状态
+let scale = 1, minScale = 1;
+let translateX = 0, translateY = 0;
+let lastDist = 0, lastTouchX = 0, lastTouchY = 0;
+
+function applyTransform() {
+    enlargedImg.style.transform =
+        `translate(${translateX}px, ${translateY}px) scale(${scale})`;
+}
+
+// 双指距离计算
+function getDistance(touches) {
+    const dx = touches[0].clientX - touches[1].clientX;
+    const dy = touches[0].clientY - touches[1].clientY;
+    return Math.sqrt(dx * dx + dy * dy);
+}
+
+// touchmove 缩放逻辑
+const newScale = scale * (dist / lastDist);
+scale = Math.max(minScale, Math.min(newScale, 6));
+lastDist = dist;
+applyTransform();
+
+// 缩回 1x 时重置位置
+if (scale <= minScale) {
+    translateX = 0;
+    translateY = 0;
+}
+```
+
+**CSS 补充：**
+```css
+.chat-images-enlarge-overlay { cursor: zoom-out; }
+.chat-images-enlarged {
+    will-change: transform;
+    cursor: zoom-in;
+}
+```
+
+---
+
 ## 总结
 
 ### Bug 类型分布
 
 | 类型 | 数量 | 占比 |
 |------|------|------|
-| DOM 操作相关 | 3 (B001, B002, B009) | 25% |
-| 异步时序相关 | 2 (B003, B005) | 17% |
-| 事件兼容性 | 2 (B007, B008) | 17% |
-| 数据持久化 | 2 (B011, B012) | 17% |
-| 状态管理 | 1 (B006) | 8% |
-| 用户理解 | 1 (B010) | 8% |
-| 返回值处理 | 1 (B004) | 8% |
+| DOM 操作相关 | 3 (B001, B002, B009) | 21% |
+| 异步时序相关 | 2 (B003, B005) | 14% |
+| 事件兼容性 | 2 (B007, B008) | 14% |
+| 数据持久化 | 2 (B011, B012) | 14% |
+| 平台兼容性 | 2 (B013, B014) | 14% |
+| 状态管理 | 1 (B006) | 7% |
+| 用户理解 | 1 (B010) | 7% |
+| 返回值处理 | 1 (B004) | 7% |
 
 ### 关键教训
 
 1. **`await` 前后的代码执行时机不同** — `await` 前的代码同步执行，此时用户尚未交互
 2. **弹窗 DOM 在关闭后被销毁** — 需要在关闭前保存数据，或用事件实时追踪
 3. **事件委托优于直接绑定** — 动态生成的 DOM 元素需要委托事件
-4. **移动端 != 桌面端** — `dblclick`、`hover`、`100%` 等在移动端表现不同
+4. **移动端 != 桌面端** — `dblclick`、`hover`、`100%`、`vh`、手势等在移动端表现不同
 5. **两步法操作 DOM** — 先确保元素存在，再进行位置移动
+6. **Android 文件选择器行为差异** — `<input type="file" accept="image/*">` 在 Android 上强制打开相册，不加 `accept` 才打开文件管理器，类型验证应放在 JS 中做
+7. **触摸手势需主动处理** — 浏览器默认不提供捏合/拖拽，需手动实现 touch 事件 + CSS transform
