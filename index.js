@@ -10,6 +10,8 @@ const TEMPLATE_NAME = 'third-party/chat-images';
 
 // 当前设置
 let currentSettings = {};
+// 记录用户最后使用的标签页（null=首次/刷新后，默认显示角色集）
+let lastActiveTab = null;
 
 /** 生成唯一ID：年月日时分秒+4位随机数 */
 function generateId(prefix) {
@@ -177,9 +179,10 @@ function addRule(rule) {
         regex: rule.regex || '',
         enabled: true,
         order: 0,
-        duration: 0,
+        duration: 2,
         ruleSetId: rule.ruleSetId || '',
         images: [],
+        _expanded: true,
     };
     rulesData.rules.unshift(newRule);
     saveSettings();
@@ -525,7 +528,7 @@ function addNavBarDrawer() {
                     <span class="chat-images-tab" data-tab="rules" style="flex:1;text-align:center;padding:6px 0;cursor:pointer;font-size:0.9em;color:var(--grey40);">规则</span>
                     <span id="chat-images-close-drawer" class="fa-solid fa-xmark menu_button menu_button_icon" style="margin-left:4px;"></span>
                 </div>
-                <div id="chat-images-rules-panel">
+                <div id="chat-images-rules-panel" style="display:none;">
                     <div style="text-align:center;margin:4px 0;">
                         <select id="chat-images-ruleset-select" class="text_pole" style="width:90%;font-size:0.9em;">
                             <option value="">未选择</option>
@@ -567,7 +570,7 @@ function addNavBarDrawer() {
                     </div>
                     <div id="chat-images-ruleset-list" class="margin5"></div>
                     </div>
-                <div id="chat-images-charsets-panel" style="display:none;">
+                <div id="chat-images-charsets-panel">
                     <div class="flex-container margin5 alignitemscenter" style="gap:5px;">
                         <input id="chat-images-char-set-search" class="text_pole flex1" type="text" placeholder="搜索角色集..." style="flex:2;">
                         <button id="chat-images-add-char-set" class="menu_button menu_button_icon" title="新增角色图片集">
@@ -580,17 +583,32 @@ function addNavBarDrawer() {
         </div>
     </div>`;
 
+    // 先添加到导航栏，再移动到用户设定管理前面
     $('#top-settings-holder').append(drawerHtml);
+    $('#chat-images-drawer').insertBefore('#user-settings-button');
 
     // 绑定抽屉切换事件
     $('#chat-images-drawer .drawer-toggle').on('click', async function() {
         const { doNavbarIconClick } = await import('../../../../script.js');
         doNavbarIconClick.call(this);
-        // 打开时渲染规则列表
+        // 打开时：首次显示角色集，之后恢复上次的标签
         if ($('#chat-images-panel').hasClass('openDrawer')) {
-            populateRuleSetDropdown();
-            populateRuleSetCharDropdown();
-            renderCharSetList();
+            const tab = lastActiveTab || 'charsets';
+            // 切换到目标标签
+            $('.chat-images-tab').removeClass('chat-images-tab-active').css('border-bottom', '2px solid transparent').css('color', 'var(--grey40)');
+            $(`.chat-images-tab[data-tab="${tab}"]`).addClass('chat-images-tab-active').css('border-bottom', '2px solid var(--primary)').css('color', '');
+            $('#chat-images-rules-panel, #chat-images-rulesets-panel, #chat-images-charsets-panel').hide();
+            $(`#chat-images-${tab}-panel`).show();
+            if (tab === 'rules') {
+                renderRuleList();
+            } else if (tab === 'rulesets') {
+                populateRuleSetCharDropdown();
+                renderRuleSetList();
+            } else {
+                populateRuleSetDropdown();
+                populateRuleSetCharDropdown();
+                renderCharSetList();
+            }
             updateAddButtons();
         }
     });
@@ -947,24 +965,25 @@ function renderRuleList() {
         const ruleElement = $(`
             <div class="rule-item" data-rule-id="${rule.id}">
                 <div class="flex-container alignitemscenter margin0">
-                    <span class="rule-collapse-btn fa-solid fa-chevron-right marginLeft5" title="展开/折叠"></span>
+                    <span class="rule-collapse-btn fa-solid fa-chevron-${rule._expanded ? 'down' : 'right'} marginLeft5" title="展开/折叠"></span>
                     <input class="rule-name text_pole flex1" type="text" value="${escapeHtml(rule.name)}" placeholder="规则名称">
-                    <input class="rule-order text_pole" type="number" min="0" step="0.1" value="${rule.order ?? 0}" style="width:40px;text-align:center;font-size:0.85em;" placeholder="顺序" title="顺序：数字越大越靠后执行">
-                    <span style="font-size:0.75em;opacity:0.6;margin-left:2px;">排</span>
-                    <input class="rule-duration text_pole" type="number" min="0" step="0.1" value="${rule.duration ?? 0}" style="width:36px;text-align:center;font-size:0.85em;margin-left:4px;" placeholder="秒" title="停留秒数：0=永久">
-                    <span style="font-size:0.75em;opacity:0.6;margin-left:2px;">秒</span>
-                    <label class="checkbox_label marginLeft5">
+                    <label class="checkbox_label marginLeft5" style="margin-bottom:0;">
                         <input type="checkbox" class="rule-enabled" ${rule.enabled ? 'checked' : ''}>
-                        <span>启用</span>
                     </label>
-                    <button class="rule-add-image menu_button menu_button_icon marginLeft5" data-rule-id="${rule.id}" title="上传图片">
-                        <i class="fa-solid fa-upload"></i>
-                    </button>
-                    <button class="rule-delete menu_button menu_button_icon marginLeft5" title="删除规则">
+                    <button class="rule-delete menu_button menu_button_icon" title="删除规则">
                         <i class="fa-solid fa-trash-can"></i>
                     </button>
                 </div>
-                <div class="rule-collapsible collapsed">
+                <div class="rule-collapsible ${rule._expanded ? '' : 'collapsed'}">
+                    <div class="flex-container alignitemscenter marginTop5" style="gap:4px;">
+                        <input class="rule-order text_pole" type="number" min="0" step="0.1" value="${rule.order ?? 0}" style="width:40px;text-align:center;font-size:0.85em;" placeholder="顺序" title="顺序：数字越大越靠后执行">
+                        <span style="font-size:0.75em;opacity:0.6;">排</span>
+                        <input class="rule-duration text_pole" type="number" min="0" step="0.1" value="${rule.duration ?? 2}" style="width:36px;text-align:center;font-size:0.85em;margin-left:4px;" placeholder="秒" title="停留秒数：0=永久">
+                        <span style="font-size:0.75em;opacity:0.6;margin-left:2px;">秒</span>
+                        <button class="rule-add-image menu_button menu_button_icon" data-rule-id="${rule.id}" title="上传图片">
+                            <i class="fa-solid fa-upload"></i>
+                        </button>
+                    </div>
                     <div class="marginTop5">
                         <input class="rule-regex text_pole wide100p" type="text"
                                value="${escapeHtml(rule.regex)}" placeholder="输入正则表达式，如: 攻击|战斗|魔法">
@@ -1058,7 +1077,6 @@ function renderRuleSetList() {
                     <span style="font-size:0.75em;opacity:0.6;margin-left:2px;">排</span>
                     <label class="checkbox_label marginLeft5">
                         <input type="checkbox" class="ruleset-enabled" ${rs.enabled ? 'checked' : ''}>
-                        <span>启用</span>
                     </label>
                     <span class="ruleset-edit menu_button menu_button_icon marginLeft5" title="编辑规则集下的规则" style="font-size:0.8em;">
                         <i class="fa-solid fa-pen-to-square"></i>
@@ -1229,12 +1247,14 @@ function bindRuleEvents(ruleElement, rule) {
         updateRule(rule.id, { enabled: $(this).is(':checked') });
     });
 
-    // 折叠/展开
+    // 折叠/展开（状态持久化）
     ruleElement.find('.rule-collapse-btn').on('click', function() {
         const collapsible = ruleElement.find('.rule-collapsible');
         const isCollapsed = collapsible.hasClass('collapsed');
         collapsible.toggleClass('collapsed');
         $(this).toggleClass('fa-chevron-down fa-chevron-right');
+        // 保存展开/折叠状态到规则数据
+        updateRule(rule.id, { _expanded: isCollapsed });
     });
 
     // 删除规则
@@ -1425,9 +1445,10 @@ function updateAddButtons() {
 // ==================== UI 事件绑定 ====================
 
 function bindUIEvents() {
-    // 标签切换
+    // 标签切换（记录用户选择）
     $(document).off('click', '.chat-images-tab').on('click', '.chat-images-tab', function() {
         const tab = $(this).data('tab');
+        lastActiveTab = tab;
         $('.chat-images-tab').removeClass('chat-images-tab-active').css('border-bottom', '2px solid transparent').css('color', 'var(--grey40)');
         $(this).addClass('chat-images-tab-active').css('border-bottom', '2px solid var(--primary)').css('color', '');
         if (tab === 'rules') {
