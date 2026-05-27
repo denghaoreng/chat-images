@@ -2,6 +2,7 @@
 // 纯前端实现，使用 SillyTavern 内置 API，无需服务端插件
 
 import { getContext, renderExtensionTemplateAsync } from '../../../extensions.js';
+import { callGenericPopup, POPUP_TYPE } from '../../../popup.js';
 
 // 模块名（必须唯一，用于 extensionSettings 的键名）
 const MODULE_NAME = 'chat-images';
@@ -178,8 +179,8 @@ function addRule(rule) {
         name: rule.name || '新规则',
         regex: rule.regex || '',
         enabled: true,
-        order: 0,
-        duration: 2,
+        order: rule.order ?? 0,
+        duration: rule.duration ?? 2,
         ruleSetId: rule.ruleSetId || '',
         images: [],
         _expanded: true,
@@ -398,12 +399,6 @@ async function handleImageUpload(ruleId) {
             return;
         }
 
-        const maxSize = 5 * 1024 * 1024;
-        if (file.size > maxSize) {
-            toastr.warning('图片大小不能超过 5MB');
-            return;
-        }
-
         const filename = generateUniqueFilename(file.name);
 
         const reader = new FileReader();
@@ -465,6 +460,418 @@ async function handleImageUpload(ruleId) {
     };
 
     fileInput.click();
+}
+
+/**
+ * 批量上传多张图片
+ */
+async function handleBatchImageUpload(ruleId) {
+    const fileInput = document.createElement('input');
+    fileInput.type = 'file';
+    fileInput.multiple = true;
+    fileInput.accept = 'image/png,image/jpeg,image/gif,image/webp';
+
+    fileInput.onchange = async function(e) {
+        const files = Array.from(e.target.files);
+        if (!files.length) return;
+
+        const allowedTypes = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
+        let successCount = 0;
+        let failCount = 0;
+
+        for (const file of files) {
+            if (!allowedTypes.includes(file.type)) {
+                failCount++;
+                continue;
+            }
+
+            try {
+                const base64Data = await new Promise((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onload = (ev) => resolve(ev.target.result.split(',')[1] || ev.target.result);
+                    reader.onerror = reject;
+                    reader.readAsDataURL(file);
+                });
+
+                const filename = generateUniqueFilename(file.name);
+                const { getRequestHeaders } = getContext();
+                const response = await fetch('/api/files/upload', {
+                    method: 'POST',
+                    headers: getRequestHeaders(),
+                    body: JSON.stringify({ name: filename, data: base64Data }),
+                });
+
+                if (!response.ok) throw new Error('上传失败');
+
+                const result = await response.json();
+                const imageMeta = {
+                    id: generateId('img'),
+                    filename: filename,
+                    path: result.path,
+                    originalName: file.name,
+                    name: file.name.replace(/\.[^/.]+$/, ''),
+                    weight: 100,
+                    uploadDate: new Date().toISOString(),
+                    fileSize: file.size,
+                };
+
+                const rulesData = getRulesData();
+                const rule = rulesData.rules.find(r => r.id === ruleId);
+                if (rule) {
+                    rule.images.push(imageMeta);
+                    successCount++;
+                }
+            } catch (err) {
+                console.error('聊天图片插件: 批量上传失败', file.name, err);
+                failCount++;
+            }
+        }
+
+        saveSettings();
+        const ruleEl = $(`.rule-item[data-rule-id="${ruleId}"]`);
+        const imagesContainer = ruleEl.find('.rule-images');
+        if (imagesContainer.length) {
+            const rulesData = getRulesData();
+            const rule = rulesData.rules.find(r => r.id === ruleId);
+            if (rule) imagesContainer.html(renderRuleImages(rule));
+        }
+
+        if (successCount > 0) toastr.success(`成功上传 ${successCount} 张图片`);
+        if (failCount > 0) toastr.warning(`${failCount} 张图片上传失败`);
+    };
+
+    fileInput.click();
+}
+
+/**
+ * 显示正则表达式手册弹窗
+ */
+function showRegexHelp() {
+    const helpHtml = `
+    <style>
+        .regex-help-table { width:100%; border-collapse: collapse; margin:6px 0; font-size:0.9em; }
+        .regex-help-table th, .regex-help-table td { border:1px solid var(--borderColor); padding:6px 8px; text-align:left; }
+        .regex-help-table th { background:var(--white30); font-weight:600; }
+        .regex-help-table td:first-child { font-family:monospace; white-space:nowrap; color:var(--primary); font-weight:bold; }
+        .regex-help-code { background:var(--white30); padding:1px 5px; border-radius:3px; font-family:monospace; font-size:0.9em; }
+        .regex-help-note { background:var(--white15); border-left:3px solid var(--primary); padding:8px 12px; margin:8px 0; border-radius:0 4px 4px 0; font-size:0.88em; }
+        .regex-help-title { font-size:1.1em; font-weight:bold; margin:12px 0 6px 0; padding-bottom:4px; border-bottom:1px solid var(--borderColor); }
+        .regex-help-sub { font-size:0.95em; font-weight:600; margin:8px 0 4px 0; color:var(--primary); }
+    </style>
+    <div style="padding:4px 8px;font-size:0.92em;line-height:1.6;">
+        <p>本插件的正则匹配基于 JavaScript <span class="regex-help-code">RegExp</span> 引擎，匹配时自动添加 <span class="regex-help-code">gi</span> 标志（全局、忽略大小写）。</p>
+
+        <div class="regex-help-title">📖 基本用法</div>
+        <p>在规则的"正则"输入框中输入模式，插件会用它对 AI 回复的文本进行匹配。<br>
+        如果匹配成功，则按规则的权重随机选中一张绑定的图片插入到聊天中。</p>
+        <div class="regex-help-note">
+            <strong>💡 示例：</strong>输入 <span class="regex-help-code">微笑|开心|高兴</span>，当 AI 回复中包含"微笑"、"开心"或"高兴"时触发。
+        </div>
+
+        <div class="regex-help-title">🔤 直接量字符</div>
+        <p>普通字符（除特殊符号外）直接匹配自身。</p>
+        <table class="regex-help-table">
+            <tr><th>模式</th><th>说明</th><th>匹配示例</th></tr>
+            <tr><td>hello</td><td>直接匹配字符串 "hello"</td><td>"hello world" ✓</td></tr>
+            <tr><td>攻击</td><td>直接匹配中文字符 "攻击"</td><td>"发动攻击" ✓</td></tr>
+            <tr><td>\\n</td><td>匹配换行符</td><td>—</td></tr>
+            <tr><td>\\t</td><td>匹配制表符</td><td>—</td></tr>
+        </table>
+
+        <div class="regex-help-title">🎯 特殊字符（需要转义）</div>
+        <p>以下字符在正则中有特殊含义，如果要匹配它们本身，需要在前面加反斜杠 <span class="regex-help-code">\\</span> 。</p>
+        <table class="regex-help-table">
+            <tr><th>字符</th><th>含义</th><th>转义写法</th><th>说明</th></tr>
+            <tr><td>.</td><td>匹配任意单个字符</td><td>\\.</td><td>匹配字面句号</td></tr>
+            <tr><td>*</td><td>前一个字符重复 0 次或多次</td><td>\\*</td><td>匹配字面星号</td></tr>
+            <tr><td>+</td><td>前一个字符重复 1 次或多次</td><td>\\+</td><td>匹配字面加号</td></tr>
+            <tr><td>?</td><td>前一个字符出现 0 次或 1 次</td><td>\\?</td><td>匹配字面问号</td></tr>
+            <tr><td>{ }</td><td>量词：指定重复次数</td><td>\\{ \\}</td><td>匹配字面花括号</td></tr>
+            <tr><td>( )</td><td>分组/捕获</td><td>\\( \\)</td><td>匹配字面括号</td></tr>
+            <tr><td>[ ]</td><td>字符集：匹配集合中的任意一个</td><td>\\[ \\]</td><td>匹配字面方括号</td></tr>
+            <tr><td>|</td><td>或：匹配左边或右边的模式</td><td>\\|</td><td>匹配字面竖线</td></tr>
+            <tr><td>^</td><td>开头断言 / 字符集内取反</td><td>\\^</td><td>匹配字面脱字符</td></tr>
+            <tr><td>$</td><td>结尾断言</td><td>\\$</td><td>匹配字面美元符号</td></tr>
+            <tr><td>\\</td><td>转义符本身</td><td>\\\\</td><td>匹配字面反斜杠</td></tr>
+        </table>
+
+        <div class="regex-help-title">📏 量词（重复次数）</div>
+        <table class="regex-help-table">
+            <tr><th>模式</th><th>说明</th><th>示例</th><th>匹配</th></tr>
+            <tr><td>*</td><td>前一个字符出现 0 次或多次</td><td>ab*c</td><td>"ac","abc","abbc"</td></tr>
+            <tr><td>+</td><td>前一个字符出现 1 次或多次</td><td>ab+c</td><td>"abc","abbc"（不匹配"ac"）</td></tr>
+            <tr><td>?</td><td>前一个字符出现 0 次或 1 次</td><td>ab?c</td><td>"ac","abc"</td></tr>
+            <tr><td>{n}</td><td>精确重复 n 次</td><td>a{3}</td><td>"aaa"</td></tr>
+            <tr><td>{n,}</td><td>至少重复 n 次</td><td>a{2,}</td><td>"aa","aaa","aaaa"...</td></tr>
+            <tr><td>{n,m}</td><td>重复 n 到 m 次</td><td>a{2,4}</td><td>"aa","aaa","aaaa"</td></tr>
+        </table>
+
+        <div class="regex-help-title">🔗 常用特殊模式</div>
+        <table class="regex-help-table">
+            <tr><th>模式</th><th>说明</th><th>等价于</th><th>示例</th></tr>
+            <tr><td>.</td><td>匹配任意单个字符（除换行）</td><td>—</td><td>h.t → "hat","hot","hit"</td></tr>
+            <tr><td>\\d</td><td>匹配一个数字</td><td>[0-9]</td><td>\\d{3} → "123"</td></tr>
+            <tr><td>\\w</td><td>匹配一个字母/数字/下划线</td><td>[a-zA-Z0-9_]</td><td>\\w+ → "hello_123"</td></tr>
+            <tr><td>\\s</td><td>匹配一个空白字符（空格/制表/换行）</td><td>[ \\t\\n\\r]</td><td>—</td></tr>
+            <tr><td>\\D</td><td>匹配一个非数字</td><td>[^0-9]</td><td>—</td></tr>
+            <tr><td>\\W</td><td>匹配一个非单词字符</td><td>[^a-zA-Z0-9_]</td><td>—</td></tr>
+            <tr><td>\\S</td><td>匹配一个非空白字符</td><td>[^ \\t\\n\\r]</td><td>—</td></tr>
+        </table>
+
+        <div class="regex-help-title">🎭 字符集 [ ]</div>
+        <table class="regex-help-table">
+            <tr><th>模式</th><th>说明</th><th>示例</th></tr>
+            <tr><td>[abc]</td><td>匹配 a、b、c 中的任意一个</td><td>b[ae]t → "bat","bet"</td></tr>
+            <tr><td>[a-z]</td><td>匹配 a 到 z 的任意小写字母</td><td>[a-z]+ → "hello"</td></tr>
+            <tr><td>[0-9]</td><td>匹配任意数字</td><td>[0-9]{2} → "42"</td></tr>
+            <tr><td>[^abc]</td><td>匹配除 a、b、c 外的任意字符</td><td>[^0-9] → 匹配非数字</td></tr>
+            <tr><td>[\\u4e00-\\u9fff]</td><td>匹配任意汉字</td><td>[\\u4e00-\\u9fff]+ → "你好世界"</td></tr>
+        </table>
+
+        <div class="regex-help-title">🔀 分组与逻辑</div>
+        <table class="regex-help-table">
+            <tr><th>模式</th><th>说明</th><th>示例</th></tr>
+            <tr><td>AB|CD</td><td>或：匹配 AB 或 CD</td><td>攻击|防守 → 匹配"攻击"或"防守"</td></tr>
+            <tr><td>(abc)</td><td>分组：将 abc 作为一个整体</td><td>(哈){3} → "哈哈哈"</td></tr>
+            <tr><td>(?:abc)</td><td>非捕获分组：分组但不记录</td><td>—</td></tr>
+        </table>
+
+        <div class="regex-help-title">📍 位置断言</div>
+        <table class="regex-help-table">
+            <tr><th>模式</th><th>说明</th><th>示例</th></tr>
+            <tr><td>^</td><td>字符串开头</td><td>^你好 → 匹配以"你好"开头的文本</td></tr>
+            <tr><td>$</td><td>字符串结尾</td><td>再见$ → 匹配以"再见"结尾的文本</td></tr>
+            <tr><td>\\b</td><td>单词边界</td><td>\\bword\\b → 匹配完整单词"word"</td></tr>
+        </table>
+
+        <div class="regex-help-title">💡 实用示例</div>
+        <table class="regex-help-table">
+            <tr><th>目的</th><th>正则模式</th><th>说明</th></tr>
+            <tr><td>匹配表情</td><td>微笑|开心|大笑|笑了</td><td>用 | 分隔多个关键词</td></tr>
+            <tr><td>匹配数字</td><td>\\d+</td><td>匹配任意长度的数字</td></tr>
+            <tr><td>匹配百分比</td><td>\\d+%</td><td>如 "50%"、"100%"</td></tr>
+            <tr><td>匹配动作描写</td><td>\\*[^*]+\\*</td><td>匹配被星号包裹的文字，如 *脸红*</td></tr>
+            <tr><td>匹配引号内容</td><td>"[^"]+"</td><td>匹配双引号中的内容</td></tr>
+            <tr><td>匹配问候语</td><td>^(你好|嗨|hello|hi)</td><td>匹配以问候语开头的文本</td></tr>
+            <tr><td>匹配特定句式</td><td>（摇头|点头|叹气）</td><td>匹配括号内的动作词</td></tr>
+            <tr><td>匹配汉字</td><td>[\\u4e00-\\u9fff]+</td><td>匹配连续的汉字</td></tr>
+            <tr><td>匹配URL</td><td>https?://[^\\s]+</td><td>匹配 http/https 链接</td></tr>
+            <tr><td>匹配感叹句</td><td>！|!|？|\\?</td><td>匹配感叹号或问号</td></tr>
+            <tr><td>匹配重复语气词</td><td>(哈|啊|嗯){2,}</td><td>匹配重复的语气词如"哈哈哈"</td></tr>
+            <tr><td>匹配情绪词</td><td>生气|愤怒|不开心|郁闷</td><td>多个情绪关键词</td></tr>
+        </table>
+
+        <div class="regex-help-title">⚠️ 注意事项</div>
+        <ul style="margin:4px 0;padding-left:18px;">
+            <li>匹配是<strong>大小写不敏感</strong>的（自动添加 <span class="regex-help-code">i</span> 标志）</li>
+            <li>匹配是<strong>全局</strong>的（自动添加 <span class="regex-help-code">g</span> 标志）</li>
+            <li>不要输入定界符 <span class="regex-help-code">/</span>，直接写模式即可</li>
+            <li>支持 Unicode 中文匹配，无需特殊设置</li>
+            <li>如果模式中有正则特殊字符（如 <span class="regex-help-code">. * + ? { } ( ) [ ] | \\ ^ $</span>），需要加 <span class="regex-help-code">\\</span> 转义</li>
+            <li>规则启用后，会检查 AI 的<strong>每条新回复</strong>是否匹配</li>
+            <li>同一规则集内的规则按"顺序"值从小到大依次匹配</li>
+            <li>多个规则集按规则集顺序逐批处理</li>
+        </ul>
+    </div>`;
+
+    callGenericPopup(helpHtml, POPUP_TYPE.TEXT, '', {
+        okButton: '关闭',
+        wide: true,
+        large: true,
+        allowVerticalScrolling: true,
+    });
+}
+
+/**
+ * 显示批量添加规则弹窗
+ */
+async function showBatchAddPopup() {
+    const setId = $('#chat-images-ruleset-select').val();
+    if (!setId || setId === '__unbound') {
+        toastr.warning('请先选择一个规则集');
+        return;
+    }
+
+    // 计算起始序号：当前规则集中最大的 order + 1
+    const rulesData = getRulesData();
+    const setRules = rulesData.rules.filter(r => r.ruleSetId === setId);
+    const maxOrder = setRules.reduce((max, r) => Math.max(max, r.order || 0), 0);
+    let nextOrder = maxOrder + 1;
+
+    /** @type {Array<{file: File, dataUrl: string}>} */
+    let uploadedImages = [];
+
+    const popupContent = $(`
+    <div id="chat-images-batch-popup" style="font-size:0.92em;min-width:500px;">
+        <style>
+            .batch-thumb { width:60px; height:60px; object-fit:cover; border-radius:4px; border:1px solid var(--borderColor); cursor:pointer; }
+            .batch-thumb:hover { opacity:0.7; }
+            .batch-thumb-item { position:relative; display:inline-block; }
+            .batch-thumb-del { position:absolute; top:-6px; right:-6px; width:18px; height:18px; border-radius:50%; background:var(--dangerColor); color:#fff; font-size:11px; line-height:18px; text-align:center; cursor:pointer; }
+        </style>
+        <div class="flex-container flexFlowColumn" style="gap:8px;">
+            <div class="flex-container alignitemscenter" style="gap:6px;">
+                <span style="white-space:nowrap;font-weight:600;">批量规则名称</span>
+                <input id="batch-rule-prefix" class="text_pole flex1" type="text" placeholder="例如: 表情_" value="">
+                <span style="white-space:nowrap;font-weight:600;margin-left:4px;">留存</span>
+                <input id="batch-rule-duration" class="text_pole" type="number" min="0" step="0.1" value="2" style="width:40px;text-align:center;" placeholder="秒" title="停留秒数：0=永久">
+                <span style="font-size:0.75em;opacity:0.6;">秒</span>
+                <button id="batch-upload-btn" class="menu_button menu_button_icon" title="批量上传图片">
+                    <i class="fa-solid fa-images"></i>
+                </button>
+            </div>
+            <div id="batch-thumb-list" class="flex-container flexWrap" style="gap:6px;min-height:40px;padding:4px;border:1px dashed var(--borderColor);border-radius:4px;">
+                <span style="opacity:0.4;font-size:0.85em;">暂无图片</span>
+            </div>
+            <div>
+                <div style="font-weight:600;margin-bottom:2px;">批量规则内容（共用正则）</div>
+                <textarea id="batch-rule-regex" class="text_pole" rows="3" placeholder="输入正则表达式，所有规则共用此模式&#10;例如: 微笑|开心|高兴" style="width:100%;resize:vertical;"></textarea>
+            </div>
+        </div>
+    </div>`);
+
+    const popup = callGenericPopup(popupContent, POPUP_TYPE.TEXT, '', {
+        okButton: '确认创建',
+        cancelButton: '取消',
+        wide: true,
+        allowVerticalScrolling: true,
+    });
+
+    // 绑定弹窗内的事件
+    $('#batch-upload-btn').on('click', function() {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.multiple = true;
+        input.accept = 'image/png,image/jpeg,image/gif,image/webp';
+        input.onchange = function(e) {
+            const files = Array.from(e.target.files);
+            const allowedTypes = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
+            for (const file of files) {
+                if (!allowedTypes.includes(file.type)) continue;
+                const reader = new FileReader();
+                reader.onload = function(ev) {
+                    uploadedImages.push({ file, dataUrl: ev.target.result });
+                    renderBatchThumbs();
+                };
+                reader.readAsDataURL(file);
+            }
+        };
+        input.click();
+    });
+
+    // 实时追踪表单值（弹窗关闭后 DOM 会被销毁，必须在关闭前捕获）
+    let formPrefix = '批量规则';
+    let formRegex = '';
+    let formDuration = 2;
+    $(document).on('input', '#batch-rule-prefix', function() { formPrefix = String($(this).val() || '').trim() || '批量规则'; });
+    $(document).on('input', '#batch-rule-regex', function() { formRegex = String($(this).val() || '').trim(); });
+    $(document).on('input', '#batch-rule-duration', function() { formDuration = parseFloat($(this).val()) || 2; });
+
+    // 权重滑条实时更新显示值
+    $(document).on('input', '.batch-thumb-weight', function() {
+        const index = $(this).data('index');
+        const val = $(this).val();
+        $(this).siblings('.batch-thumb-weight-value').text(val);
+        if (uploadedImages[index]) uploadedImages[index].weight = parseInt(val);
+    });
+
+    function renderBatchThumbs() {
+        const container = $('#batch-thumb-list');
+        if (uploadedImages.length === 0) {
+            container.html('<span style="opacity:0.4;font-size:0.85em;">暂无图片</span>');
+            return;
+        }
+        container.empty();
+        uploadedImages.forEach((item, index) => {
+            const weight = item.weight ?? 100;
+            const thumb = $(`
+                <div class="batch-thumb-item" data-index="${index}" style="text-align:center;">
+                    <div style="position:relative;display:inline-block;">
+                        <img class="batch-thumb" src="${item.dataUrl}" title="${item.file.name}">
+                        <span class="batch-thumb-del" data-index="${index}">×</span>
+                    </div>
+                    <div class="rule-image-weight" style="margin-top:2px;">
+                        <input type="range" class="batch-thumb-weight" data-index="${index}" min="0" max="100" value="${weight}" style="width:56px;height:4px;vertical-align:middle;">
+                        <span class="batch-thumb-weight-value image-weight-value">${weight}</span>
+                    </div>
+                </div>
+            `);
+            thumb.find('.batch-thumb-del').on('click', function() {
+                uploadedImages.splice(index, 1);
+                renderBatchThumbs();
+            });
+            container.append(thumb);
+        });
+    }
+
+    // 等待弹窗结果（表单值已通过 input 事件实时追踪到 formPrefix/formRegex/formDuration 中）
+    const result = await popup;
+
+    // 用户取消或关闭弹窗（null/undefined/0 都视为取消）
+    if (result === null || result === undefined || result === false || result === 0) {
+        return;
+    }
+
+    if (uploadedImages.length === 0) {
+        toastr.warning('请至少上传一张图片');
+        return;
+    }
+
+    // 开始逐个创建规则并上传图片
+    let successCount = 0;
+    let failCount = 0;
+
+    for (let i = 0; i < uploadedImages.length; i++) {
+        const item = uploadedImages[i];
+        const ruleName = `${formPrefix}${nextOrder + i}`;
+
+        try {
+            // 上传图片到服务端
+            const base64Data = item.dataUrl.split(',')[1] || item.dataUrl;
+            const filename = generateUniqueFilename(item.file.name);
+            const { getRequestHeaders } = getContext();
+            const uploadRes = await fetch('/api/files/upload', {
+                method: 'POST',
+                headers: getRequestHeaders(),
+                body: JSON.stringify({ name: filename, data: base64Data }),
+            });
+            if (!uploadRes.ok) throw new Error('上传失败');
+            const uploadResult = await uploadRes.json();
+
+            const imageMeta = {
+                id: generateId('img'),
+                filename: filename,
+                path: uploadResult.path,
+                originalName: item.file.name,
+                name: item.file.name.replace(/\.[^/.]+$/, ''),
+                weight: item.weight ?? 100,
+                uploadDate: new Date().toISOString(),
+                fileSize: item.file.size,
+            };
+
+            // 创建规则（带图片）
+            const newRule = addRule({
+                name: ruleName,
+                regex: formRegex,
+                ruleSetId: setId,
+                order: nextOrder + i,
+                duration: formDuration,
+            });
+            newRule.images.push(imageMeta);
+            saveSettings();
+
+            successCount++;
+        } catch (err) {
+            console.error('[聊天图片] 批量创建规则失败', err);
+            failCount++;
+        }
+    }
+
+    if (successCount > 0) {
+        toastr.success(`成功创建 ${successCount} 条规则`);
+        renderRuleList();
+    }
+    if (failCount > 0) toastr.warning(`${failCount} 条规则创建失败`);
 }
 
 /**
@@ -534,6 +941,11 @@ function addNavBarDrawer() {
                             <option value="">未选择</option>
                             <option value="__unbound">未绑定</option>
                         </select>
+                    </div>
+                    <div style="text-align:center;margin:2px 0;">
+                        <button id="chat-images-batch-add" class="menu_button" style="font-size:0.85em;width:90%;">
+                            <i class="fa-solid fa-layer-group"></i> 批量添加规则
+                        </button>
                     </div>
                     <div class="flex-container margin5 alignitemscenter" style="gap:5px;">
                         <input id="chat-images-search" class="text_pole flex1" type="text" placeholder="搜索规则..." style="flex:2;">
@@ -644,7 +1056,10 @@ function renderImagesInDom(messageId, images) {
 
         const imageHtml = `
         <div class="mes_media_container mes_img_container chat-image-queued" data-index="${Date.now()}">
-            <img class="mes_img" src="${imgUrl}" alt="${escapeHtml(img.name || '聊天图片')}" title="${escapeHtml(img.name || '聊天图片')}" onclick="event.stopPropagation()" onerror="chatImagesCleanupStaleImage(this)">
+            <div class="mes_img_controls">
+                <div title="点击放大" class="right_menu_button fa-lg fa-solid fa-magnifying-glass chat-image-enlarge"></div>
+            </div>
+            <img class="mes_img" src="${imgUrl}" alt="${escapeHtml(img.name || '聊天图片')}" title="${escapeHtml(img.name || '聊天图片')}" onerror="chatImagesCleanupStaleImage(this)">
         </div>`;
         mediaWrapper.append(imageHtml);
     }
@@ -714,6 +1129,23 @@ function registerEventListeners() {
     eventSource.makeLast(event_types.CHARACTER_MESSAGE_RENDERED, onMessageReceived);
     eventSource.on(event_types.MESSAGE_SWIPED, onMessageSwiped);
     eventSource.on(event_types.CHAT_LOADED, onChatLoaded);
+
+    // 自定义图片放大（不依赖 extra.media，避免图片被发送给模型）
+    $(document).off('click', '.chat-image-enlarge').on('click', '.chat-image-enlarge', function() {
+        const imgEl = $(this).closest('.mes_media_container').find('.mes_img')[0];
+        if (!imgEl?.src) return;
+        const overlay = document.createElement('div');
+        overlay.className = 'img_enlarged_holder';
+        overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.85);z-index:99999;display:flex;align-items:center;justify-content:center;cursor:zoom-out;';
+        const enlargedImg = document.createElement('img');
+        enlargedImg.src = imgEl.src;
+        enlargedImg.style.cssText = 'max-width:90%;max-height:90%;object-fit:contain;border-radius:8px;box-shadow:0 0 30px rgba(0,0,0,0.5);';
+        enlargedImg.className = 'img_enlarged';
+        enlargedImg.addEventListener('click', function(e) { e.stopPropagation(); this.classList.toggle('zoomed'); });
+        overlay.appendChild(enlargedImg);
+        overlay.addEventListener('click', function() { document.body.removeChild(overlay); });
+        document.body.appendChild(overlay);
+    });
 }
 
 /**
@@ -983,6 +1415,12 @@ function renderRuleList() {
                         <button class="rule-add-image menu_button menu_button_icon" data-rule-id="${rule.id}" title="上传图片">
                             <i class="fa-solid fa-upload"></i>
                         </button>
+                        <button class="rule-add-images-batch menu_button menu_button_icon" data-rule-id="${rule.id}" title="批量上传图片">
+                            <i class="fa-solid fa-images"></i>
+                        </button>
+                        <button class="rule-regex-help menu_button menu_button_icon" title="正则表达式手册">
+                            <i class="fa-solid fa-book"></i>
+                        </button>
                     </div>
                     <div class="marginTop5">
                         <input class="rule-regex text_pole wide100p" type="text"
@@ -1113,6 +1551,7 @@ function bindRuleSetEvents(element, rs) {
     });
     // 编辑按钮：跳转到规则标签并选中对应规则集
     element.find('.ruleset-edit').on('click', function() {
+        lastActiveTab = 'rules';
         // 切换到规则标签
         $('#chat-images-rules-panel').show();
         $('#chat-images-rulesets-panel').hide();
@@ -1210,6 +1649,7 @@ function bindCharSetEvents(element, cs) {
     });
     // 编辑按钮：跳转到规则集标签并选中对应角色集
     element.find('.charset-edit').on('click', function() {
+        lastActiveTab = 'rulesets';
         $('#chat-images-charsets-panel').hide();
         $('#chat-images-rulesets-panel').show();
         $('#chat-images-rules-panel').hide();
@@ -1270,8 +1710,18 @@ function bindRuleEvents(ruleElement, rule) {
         handleImageUpload(rule.id);
     });
 
-    // 图片权重变更
-    ruleElement.find('.image-weight-slider').on('input', function() {
+    // 批量上传图片
+    ruleElement.find('.rule-add-images-batch').on('click', function() {
+        handleBatchImageUpload(rule.id);
+    });
+
+    // 正则手册
+    ruleElement.find('.rule-regex-help').on('click', function() {
+        showRegexHelp();
+    });
+
+    // 图片权重变更（使用事件委托，避免刷新后失效）
+    ruleElement.on('input', '.image-weight-slider', function() {
         const imageId = $(this).data('image-id');
         const value = parseInt($(this).val());
         $(this).siblings('.image-weight-value').text(value);
@@ -1283,8 +1733,8 @@ function bindRuleEvents(ruleElement, rule) {
         }
     });
 
-    // 删除图片（同时删除服务端文件）
-    ruleElement.find('.rule-image-delete').on('click', async function() {
+    // 删除图片（使用事件委托，避免刷新后失效）
+    ruleElement.on('click', '.rule-image-delete', async function() {
         const imageItem = $(this).closest('.rule-image-item');
         const imageId = imageItem.data('image-id');
         const img = rule.images.find(i => i.id === imageId);
@@ -1484,11 +1934,20 @@ function bindUIEvents() {
         renderRuleList();
     });
 
-    // 添加规则按钮（不自动展开）
+    // 添加规则按钮（顺序自动取当前规则集最大值+1）
     $(document).off('click', '#chat-images-add-rule').on('click', '#chat-images-add-rule', function() {
         const setId = $('#chat-images-ruleset-select').val() || '';
-        addRule({ name: '新规则', regex: '', ruleSetId: (setId === '__unbound') ? '' : setId });
+        const effectiveSetId = (setId === '__unbound') ? '' : setId;
+        const rulesData = getRulesData();
+        const setRules = rulesData.rules.filter(r => r.ruleSetId === effectiveSetId);
+        const maxOrder = setRules.reduce((max, r) => Math.max(max, r.order || 0), 0);
+        addRule({ name: '新规则', regex: '', ruleSetId: effectiveSetId, order: maxOrder + 1 });
         renderRuleList();
+    });
+
+    // 批量添加规则
+    $(document).off('click', '#chat-images-batch-add').on('click', '#chat-images-batch-add', function() {
+        showBatchAddPopup();
     });
 
     // 新增规则集（关联当前选择的角色集）
@@ -1611,7 +2070,10 @@ function queueBatchesForMessage(messageId, batches) {
 
             const imageHtml = `
         <div class="mes_media_container mes_img_container chat-image-queued" data-index="${Date.now()}" data-rule-id="${item.ruleId || ''}">
-            <img class="mes_img" src="${imgUrl}" alt="${escapeHtml(item.image.name || '聊天图片')}" title="${escapeHtml(item.image.name || '聊天图片')}" onclick="event.stopPropagation()" onerror="chatImagesCleanupStaleImage(this)">
+            <div class="mes_img_controls">
+                <div title="点击放大" class="right_menu_button fa-lg fa-solid fa-magnifying-glass chat-image-enlarge"></div>
+            </div>
+            <img class="mes_img" src="${imgUrl}" alt="${escapeHtml(item.image.name || '聊天图片')}" title="${escapeHtml(item.image.name || '聊天图片')}" onerror="chatImagesCleanupStaleImage(this)">
         </div>`;
             mediaWrapper.append(imageHtml);
 
