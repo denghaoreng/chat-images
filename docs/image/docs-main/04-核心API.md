@@ -49,6 +49,27 @@ import { getContext } from '../../extensions.js';
 | `chatCompletionSettings` | `object` | Chat Completion 设置（`oai_settings`） |
 | `textCompletionSettings` | `object` | Text Completion 设置 |
 
+### ⚠️ extensionSettings 使用注意事项
+
+`extensionSettings` 适合存储中小型数据（规则配置、偏好设置等），**不适合存储大型数据**（如图片文件、大量历史记录）。
+
+```javascript
+// ✅ 适合存储：配置、规则、元数据
+extensionSettings['my-plugin'] = {
+    rules: [{ id: 'rule_1', name: '规则1', images: [...] }],
+    enabled: true,
+};
+
+// ❌ 不适合存储：图片文件、日志文件、大型数据集
+// extensionSettings['my-plugin'].largeData = { /* 兆字节数据 */ };
+
+// 大数据应使用 localforage（IndexedDB）
+const { localforage } = SillyTavern.libs;
+await localforage.setItem('my-plugin-large-data', largeData);
+```
+
+另外注意：`saveSettingsDebounced()` 是防抖保存，多次修改只会触发一次写入，适合频繁调用。
+
 ---
 
 ## 核心方法
