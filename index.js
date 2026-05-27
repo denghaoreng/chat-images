@@ -941,9 +941,15 @@ function addNavBarDrawer() {
                             <option value="__unbound">未绑定</option>
                         </select>
                     </div>
-                    <div style="text-align:center;margin:2px 0;">
-                        <button id="chat-images-batch-add" class="menu_button" style="font-size:0.85em;width:90%;">
+                    <div style="text-align:center;margin:2px 0;display:flex;gap:4px;justify-content:center;">
+                        <button id="chat-images-batch-add" class="menu_button" style="font-size:0.85em;flex:1;">
                             <i class="fa-solid fa-layer-group"></i> 批量添加规则
+                        </button>
+                        <button id="chat-images-expand-all" class="menu_button menu_button_icon" title="展开全部" style="font-size:0.85em;">
+                            <i class="fa-solid fa-chevron-down"></i>
+                        </button>
+                        <button id="chat-images-collapse-all" class="menu_button menu_button_icon" title="折叠全部" style="font-size:0.85em;">
+                            <i class="fa-solid fa-chevron-right"></i>
                         </button>
                     </div>
                     <div class="flex-container margin5 alignitemscenter" style="gap:5px;">
@@ -1130,20 +1136,38 @@ function registerEventListeners() {
     eventSource.on(event_types.CHAT_LOADED, onChatLoaded);
 
     // 自定义图片放大（不依赖 extra.media，避免图片被发送给模型）
-    $(document).off('click', '.chat-image-enlarge').on('click', '.chat-image-enlarge', function() {
-        const imgEl = $(this).closest('.mes_media_container').find('.mes_img')[0];
+    function chatImageEnlarge(imgEl) {
         if (!imgEl?.src) return;
         const overlay = document.createElement('div');
-        overlay.className = 'img_enlarged_holder';
-        overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.85);z-index:99999;display:flex;align-items:center;justify-content:center;cursor:zoom-out;';
+        overlay.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;height:100dvh;background:rgba(0,0,0,0.9);z-index:99999;display:flex;align-items:center;justify-content:center;cursor:zoom-out;';
         const enlargedImg = document.createElement('img');
         enlargedImg.src = imgEl.src;
-        enlargedImg.style.cssText = 'max-width:90%;max-height:90%;object-fit:contain;border-radius:8px;box-shadow:0 0 30px rgba(0,0,0,0.5);';
+        enlargedImg.style.cssText = 'max-width:95vw;max-height:95vh;max-height:95dvh;width:auto;height:auto;object-fit:contain;border-radius:4px;box-shadow:0 0 20px rgba(0,0,0,0.5);';
         enlargedImg.className = 'img_enlarged';
         enlargedImg.addEventListener('click', function(e) { e.stopPropagation(); this.classList.toggle('zoomed'); });
         overlay.appendChild(enlargedImg);
         overlay.addEventListener('click', function() { document.body.removeChild(overlay); });
         document.body.appendChild(overlay);
+    }
+
+    // 点击放大镜按钮放大
+    $(document).off('click', '.chat-image-enlarge').on('click', '.chat-image-enlarge', function() {
+        const imgEl = $(this).closest('.mes_media_container').find('.mes_img')[0];
+        chatImageEnlarge(imgEl);
+    });
+
+    // 双击/双指点击图片本身放大（兼容移动端）
+    $(document).off('click', '.chat-image-queued .mes_img').on('click', '.chat-image-queued .mes_img', function() {
+        const img = this;
+        const now = Date.now();
+        const lastTap = img._lastTap || 0;
+        if (now - lastTap < 400) {
+            // 两次点击间隔 < 400ms 视为双击
+            chatImageEnlarge(img);
+            img._lastTap = 0;
+        } else {
+            img._lastTap = now;
+        }
     });
 }
 
@@ -1947,6 +1971,26 @@ function bindUIEvents() {
     // 批量添加规则
     $(document).off('click', '#chat-images-batch-add').on('click', '#chat-images-batch-add', function() {
         showBatchAddPopup();
+    });
+
+    // 展开全部规则
+    $(document).off('click', '#chat-images-expand-all').on('click', '#chat-images-expand-all', function() {
+        $('#chat-images-rule-list .rule-collapsible').removeClass('collapsed');
+        $('#chat-images-rule-list .rule-collapse-btn').removeClass('fa-chevron-right').addClass('fa-chevron-down');
+        $('#chat-images-rule-list .rule-item').each(function() {
+            const ruleId = $(this).data('rule-id');
+            if (ruleId) updateRule(ruleId, { _expanded: true });
+        });
+    });
+
+    // 折叠全部规则
+    $(document).off('click', '#chat-images-collapse-all').on('click', '#chat-images-collapse-all', function() {
+        $('#chat-images-rule-list .rule-collapsible').addClass('collapsed');
+        $('#chat-images-rule-list .rule-collapse-btn').removeClass('fa-chevron-down').addClass('fa-chevron-right');
+        $('#chat-images-rule-list .rule-item').each(function() {
+            const ruleId = $(this).data('rule-id');
+            if (ruleId) updateRule(ruleId, { _expanded: false });
+        });
     });
 
     // 新增规则集（关联当前选择的角色集）
