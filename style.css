@@ -305,8 +305,11 @@
 /* 图片容器在消息中居中 */
 .chat-image-queued {
     text-align: center !important;
+    display: block !important;
     margin-left: auto !important;
     margin-right: auto !important;
-    width: 100% !important;
+    width: auto !important;
     max-width: 400px !important;
+    float: none !important;
+    clear: both !important;
 }
