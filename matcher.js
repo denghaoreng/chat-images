@@ -170,7 +170,9 @@ export function queueBatchesForMessage(messageId, batches) {
             <div class="mes_img_controls">
                 <div title="点击放大" class="right_menu_button fa-lg fa-solid fa-magnifying-glass chat-image-enlarge"></div>
             </div>
-            <img class="mes_img" src="${imgUrl}" alt="${escapeHtml(item.image.name || '聊天图片')}" title="${escapeHtml(item.image.name || '聊天图片')}" onerror="chatImagesCleanupStaleImage(this)">
+            <div class="chat-image-frame">
+                <img class="mes_img" src="${imgUrl}" alt="${escapeHtml(item.image.name || '聊天图片')}" title="${escapeHtml(item.image.name || '聊天图片')}" onerror="chatImagesCleanupStaleImage(this)">
+            </div>
         </div>`;
             mediaWrapper.append(imageHtml);
 

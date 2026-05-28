@@ -274,3 +274,39 @@
 }
 
 /* 图片插入到消息后由 SillyTavern 自带样式渲染，无需额外样式 */
+
+/* --- 图片固定框（防抖动+居中） --- */
+.chat-image-frame {
+    width: 100%;
+    height: 180px;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    overflow: hidden;
+    border-radius: 4px;
+    background: rgba(0, 0, 0, 0.05);
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+.chat-image-frame .mes_img {
+    width: auto !important;
+    height: 100% !important;
+    max-width: 100% !important;
+    max-height: 100% !important;
+    object-fit: contain !important;
+    border-radius: 0;
+    margin: 0 auto !important;
+    display: block !important;
+    position: static !important;
+}
+
+/* 图片容器在消息中居中 */
+.chat-image-queued {
+    text-align: center !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+    width: 80% !important;
+    max-width: 400px !important;
+}
