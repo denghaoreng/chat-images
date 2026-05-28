@@ -2,9 +2,9 @@
 
 import { getContext } from '../../../extensions.js';
 import { callGenericPopup, POPUP_TYPE } from '../../../popup.js';
-import { getRulesData, addRule, saveSettings } from './data.js';
+import { getRulesData, addRule, updateRule, saveSettings } from './data.js';
 import { generateUniqueFilename, getImageUrl } from './image.js';
-import { generateId } from './utils.js';
+import { generateId, escapeHtml } from './utils.js';
 
 // ==================== 正则手册 ====================
 
@@ -301,4 +301,112 @@ export async function showBatchAddPopup() {
         renderRuleList();
     }
     if (failCount > 0) toastr.warning(`${failCount} 条规则创建失败`);
+}
+
+// ==================== 批量修改规则 ====================
+
+/**
+ * 批量修改指定规则集下所有规则的停留时间和正则内容
+ * @param {string} ruleSetId - 规则集 ID
+ */
+export async function showBatchEditPopup(ruleSetId) {
+    const rulesData = getRulesData();
+    const rules = rulesData.rules.filter(r => r.ruleSetId === ruleSetId);
+    const ruleSet = rulesData.ruleSets.find(rs => rs.id === ruleSetId);
+    const setName = ruleSet ? ruleSet.name : '未命名规则集';
+
+    if (rules.length === 0) {
+        toastr.warning('此规则集下没有规则可修改');
+        return;
+    }
+
+    // 状态变量（实时追踪，避免 DOM 销毁后值丢失）
+    let modifyDuration = false;
+    let newDuration = 2;
+    let modifyRegex = false;
+    let newRegex = '';
+
+    const popupContent = $(`
+    <div style="padding:8px 12px;min-width:350px;">
+        <h3 style="margin:0 0 10px 0;font-size:1.05em;border-bottom:1px solid var(--borderColor);padding-bottom:8px;">
+            <i class="fa-solid fa-pen-to-square"></i> 批量修改规则
+        </h3>
+        <div style="font-size:0.88em;opacity:0.7;margin-bottom:12px;">
+            规则集：<strong>${escapeHtml(setName)}</strong>（共 ${rules.length} 条规则）
+        </div>
+
+        <div class="flex-container alignitemscenter margin0" style="gap:8px;margin-bottom:10px;padding:8px;background:var(--white15);border-radius:6px;">
+            <label class="checkbox_label" style="margin-bottom:0;white-space:nowrap;">
+                <input type="checkbox" id="batch-edit-modify-duration">
+                <span style="font-size:0.9em;">停留时间</span>
+            </label>
+            <input type="number" id="batch-edit-duration" class="text_pole" min="0" step="0.1" value="2" style="width:60px;text-align:center;font-size:0.9em;" disabled>
+            <span style="font-size:0.85em;opacity:0.6;">秒（0=永久）</span>
+        </div>
+
+        <div class="flex-container alignitemscenter" style="gap:8px;margin-bottom:12px;padding:8px;background:var(--white15);border-radius:6px;">
+            <label class="checkbox_label" style="margin-bottom:0;white-space:nowrap;">
+                <input type="checkbox" id="batch-edit-modify-regex">
+                <span style="font-size:0.9em;">正则内容</span>
+            </label>
+            <input type="text" id="batch-edit-regex" class="text_pole flex1" placeholder="输入新的正则表达式" style="font-family:monospace;font-size:0.9em;" disabled>
+        </div>
+
+        <div style="font-size:0.82em;opacity:0.5;margin-top:4px;padding:6px;background:var(--white10);border-radius:4px;">
+            <i class="fa-solid fa-info-circle"></i>
+            勾选后填写新值，确认后将应用到该规则集下的所有规则
+        </div>
+    </div>
+    `);
+
+    // 实时追踪：勾选框控制输入框启用/禁用
+    popupContent.find('#batch-edit-modify-duration').on('change', function () {
+        modifyDuration = $(this).is(':checked');
+        popupContent.find('#batch-edit-duration').prop('disabled', !modifyDuration);
+    });
+    popupContent.find('#batch-edit-modify-regex').on('change', function () {
+        modifyRegex = $(this).is(':checked');
+        popupContent.find('#batch-edit-regex').prop('disabled', !modifyRegex);
+    });
+
+    // 实时追踪：输入值
+    popupContent.find('#batch-edit-duration').on('input', function () {
+        newDuration = parseFloat($(this).val()) || 0;
+    });
+    popupContent.find('#batch-edit-regex').on('input', function () {
+        newRegex = $(this).val();
+    });
+
+    // 显示弹窗
+    const result = await callGenericPopup(popupContent, POPUP_TYPE.TEXT, '', {
+        okButton: '确认修改',
+        cancelButton: '取消',
+        allowVerticalScrolling: true,
+    });
+
+    if (!result) return; // 点击取消
+
+    // 应用修改
+    let count = 0;
+    for (const rule of rules) {
+        const updates = {};
+        if (modifyDuration) {
+            updates.duration = newDuration;
+        }
+        if (modifyRegex) {
+            updates.regex = newRegex;
+        }
+        if (Object.keys(updates).length > 0) {
+            updateRule(rule.id, updates);
+            count++;
+        }
+    }
+
+    if (count > 0) {
+        toastr.success(`已修改 ${count} 条规则`);
+        const { renderRuleList } = await import('./rules-ui.js');
+        renderRuleList();
+    } else {
+        toastr.warning('未做任何修改');
+    }
 }

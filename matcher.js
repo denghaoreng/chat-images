@@ -8,6 +8,28 @@ import { escapeHtml } from './utils.js';
 // 存储每个消息当前的图片队列定时器
 const imageQueueTimers = new Map();
 
+// ==================== 正则预编译缓存 ====================
+
+const regexCache = new Map();
+
+function getCachedRegex(pattern) {
+    if (!regexCache.has(pattern)) {
+        try {
+            regexCache.set(pattern, new RegExp(pattern, 'gi'));
+        } catch (e) {
+            regexCache.set(pattern, null);
+        }
+    }
+    return regexCache.get(pattern);
+}
+
+/**
+ * 规则变更时调用，清空正则缓存
+ */
+export function invalidateRegexCache() {
+    regexCache.clear();
+}
+
 // ==================== 匹配逻辑 ====================
 
 export function performMatch(text) {
@@ -69,7 +91,8 @@ export function matchSingleRule(rule, text) {
         if (!pattern) {
             return null;
         }
-        const regex = new RegExp(pattern, 'gi');
+        const regex = getCachedRegex(pattern);
+        if (!regex) return null;
         const matched = regex.test(text);
         if (!matched) {
             return null;
@@ -128,13 +151,29 @@ export function sanitizeRegex(input) {
     return pattern;
 }
 
-// ==================== 图片队列 ====================
+// ==================== 图片队列（优化版） ====================
 
 export function queueBatchesForMessage(messageId, batches) {
+    // 清除旧定时器
     const oldTimer = imageQueueTimers.get(messageId);
     if (oldTimer) clearTimeout(oldTimer);
 
+    // 预查 DOM 节点，只查一次
+    const messageEl = $(`.mes[mesid="${messageId}"]`);
+    if (!messageEl.length) return;
+    let mediaWrapper = messageEl.find('.mes_media_wrapper');
+    if (!mediaWrapper.length) return;
+
+    // 创建或复用一个专用容器，避免反复删除重建
+    let container = mediaWrapper.find('.chat-images-queue-container');
+    const isNew = !container.length;
+    if (isNew) {
+        container = $('<div class="chat-images-queue-container"></div>');
+        mediaWrapper.append(container);
+    }
+
     let batchIndex = 0;
+    let persisted = false; // 标记是否已写入 chat.extra.chatImages
 
     function processNextBatch() {
         if (batchIndex >= batches.length) return;
@@ -151,39 +190,39 @@ export function queueBatchesForMessage(messageId, batches) {
 
             const item = items[itemIndex];
             const imgUrl = getImageUrl(item.image);
-
-            const messageEl = $(`.mes[mesid="${messageId}"]`);
-            messageEl.find('img[src*="chat-images_"]').closest('.mes_media_container').remove();
-            messageEl.find('.chat-image-queued, [data-rule-id]').remove();
-
-            if (!imgUrl || !messageEl.length) {
+            if (!imgUrl) {
                 itemIndex++;
                 showCurrentItem();
                 return;
             }
 
-            const mediaWrapper = messageEl.find('.mes_media_wrapper');
-            if (!mediaWrapper.length) return;
-
-            const imageHtml = `
+            if (container.length) {
+                container.empty();
+                const imageHtml = `
         <div class="mes_media_container mes_img_container chat-image-queued" data-index="${Date.now()}" data-rule-id="${item.ruleId || ''}">
             <div class="mes_img_controls">
                 <div title="点击放大" class="right_menu_button fa-lg fa-solid fa-magnifying-glass chat-image-enlarge"></div>
             </div>
             <img class="mes_img" src="${imgUrl}" alt="${escapeHtml(item.image.name || '聊天图片')}" title="${escapeHtml(item.image.name || '聊天图片')}" onerror="chatImagesCleanupStaleImage(this)">
         </div>`;
-            mediaWrapper.append(imageHtml);
+                container.append(imageHtml);
+            }
 
-            const { chat, saveChat } = getContext();
-            const msg = chat[messageId];
-            if (msg) {
-                if (!msg.extra) msg.extra = {};
-                msg.extra.chatImages = [{ url: imgUrl, name: item.image.name || '聊天图片', filename: item.image.filename }];
-                saveChat();
+            // 仅在首次展示时持久化到 chat.extra.chatImages（避免高频 saveChat）
+            if (!persisted) {
+                const { chat, saveChat } = getContext();
+                const msg = chat[messageId];
+                if (msg) {
+                    if (!msg.extra) msg.extra = {};
+                    msg.extra.chatImages = [{ url: imgUrl, name: item.image.name || '聊天图片', filename: item.image.filename }];
+                    saveChat();
+                    persisted = true;
+                }
             }
 
             itemIndex++;
 
+            // 设置定时器切换到下一项/下一批次
             if (itemIndex < items.length && item.duration > 0) {
                 const timer = setTimeout(showCurrentItem, item.duration * 1000);
                 imageQueueTimers.set(messageId, timer);

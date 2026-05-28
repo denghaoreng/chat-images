@@ -29,6 +29,9 @@ export function addNavBarDrawer() {
                         <button id="chat-images-batch-add" class="menu_button" style="font-size:0.85em;flex:1;">
                             <i class="fa-solid fa-layer-group"></i> 批量
                         </button>
+                        <button id="chat-images-batch-edit" class="menu_button" style="font-size:0.85em;flex:1;" title="批量修改选中规则集的所有规则">
+                            <i class="fa-solid fa-pen-to-square"></i> 批量改
+                        </button>
                         <button id="chat-images-expand-all" class="menu_button menu_button_icon" title="展开全部" style="font-size:0.85em;">
                             <i class="fa-solid fa-chevron-down"></i>
                         </button>

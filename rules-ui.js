@@ -3,7 +3,7 @@
 import { getContext } from '../../../extensions.js';
 import { getRulesData, getRuleSets, getCharSets, getRuleById, addRule, updateRule, deleteRule, updateRuleSet, deleteRuleSet, addRuleSet, updateCharSet, deleteCharSet, addCharSet, saveSettings, currentSettings } from './data.js';
 import { getImageUrl, handleImageUpload, handleBatchImageUpload, deleteImageFile } from './image.js';
-import { showRegexHelp, showBatchAddPopup } from './popups.js';
+import { showRegexHelp, showBatchAddPopup, showBatchEditPopup } from './popups.js';
 import { escapeHtml } from './utils.js';
 
 // ==================== 规则渲染 ====================
@@ -434,6 +434,15 @@ export function bindUIEvents() {
 
     $(document).off('click', '#chat-images-batch-add').on('click', '#chat-images-batch-add', function () {
         showBatchAddPopup();
+    });
+
+    $(document).off('click', '#chat-images-batch-edit').on('click', '#chat-images-batch-edit', function () {
+        const setId = $('#chat-images-ruleset-select').val();
+        if (!setId || setId === '__unbound') {
+            toastr.warning('请先选择一个规则集');
+            return;
+        }
+        showBatchEditPopup(setId);
     });
 
     // 展开/折叠全部
