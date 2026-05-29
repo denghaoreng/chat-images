@@ -302,14 +302,16 @@
 }
 
 /* 图片容器在消息中居中 */
+.mes_media_wrapper {
+    text-align: center !important;
+}
+
 .chat-image-queued {
-    display: flex !important;
-    flex-direction: column !important;
-    align-items: center !important;
-    justify-content: center !important;
-    margin-left: auto !important;
-    margin-right: auto !important;
+    display: inline-block !important;
+    text-align: center !important;
+    width: auto !important;
     max-width: 400px !important;
     float: none !important;
     clear: both !important;
+    vertical-align: top !important;
 }
