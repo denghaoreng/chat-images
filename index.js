@@ -37,6 +37,7 @@ export function onDisable() {
     const { eventSource, event_types } = getContext();
     eventSource.removeListener(event_types.CHARACTER_MESSAGE_RENDERED, onMessageReceived);
     eventSource.removeListener(event_types.MESSAGE_SWIPED, onMessageSwiped);
+    eventSource.removeListener(event_types.MESSAGE_UPDATED, onMessageUpdated);
     eventSource.removeListener(event_types.CHAT_LOADED, onChatLoaded);
 }
 
@@ -47,10 +48,12 @@ function registerEventListeners() {
 
     eventSource.removeListener(event_types.CHARACTER_MESSAGE_RENDERED, onMessageReceived);
     eventSource.removeListener(event_types.MESSAGE_SWIPED, onMessageSwiped);
+    eventSource.removeListener(event_types.MESSAGE_UPDATED, onMessageUpdated);
     eventSource.removeListener(event_types.CHAT_LOADED, onChatLoaded);
 
     eventSource.makeLast(event_types.CHARACTER_MESSAGE_RENDERED, onMessageReceived);
     eventSource.on(event_types.MESSAGE_SWIPED, onMessageSwiped);
+    eventSource.on(event_types.MESSAGE_UPDATED, onMessageUpdated);
     eventSource.on(event_types.CHAT_LOADED, onChatLoaded);
 
     // 自定义图片放大
@@ -118,11 +121,35 @@ function onMessageSwiped() {
     const lastMsgId = chat.indexOf(lastMsg);
 
     if (!lastMsg || lastMsg.is_user) return;
-    if (lastMsg.extra?.chatImages) {
-        delete lastMsg.extra.chatImages;
-    }
 
-    performMatch(lastMsg.mes);
+    // 清除该消息的缓存图片
+    delete lastMsg.extra?.chatImages;
+
+    // 从 DOM 中移除旧的图片
+    $(`.mes[mesid="${lastMsgId}"]`).find('.chat-image-queued').remove();
+
+    // 消息已有文本 → 缓存滑动（无新生成），立即匹配
+    // 消息无文本 → 新生成中，等 CHARACTER_MESSAGE_RENDERED 再匹配
+    if (lastMsg.mes) {
+        performMatch(lastMsg.mes);
+    }
+}
+
+function onMessageUpdated(messageId) {
+    if (!currentSettings.enabled || !currentSettings.autoDetect) return;
+
+    const { chat } = getContext();
+    const message = typeof messageId === 'number' ? chat[messageId] : chat[chat.length - 1];
+    if (!message || message.is_user) return;
+    if (message.extra?.chatImages?.length) return;
+
+    const text = message.mes;
+    if (!text) return;
+
+    // 只处理最后一条消息，避免旧消息编辑时也触发
+    if (chat.indexOf(message) !== chat.length - 1) return;
+
+    performMatch(text);
 }
 
 // ==================== 图片渲染 ====================
@@ -146,7 +173,9 @@ function renderImagesInDom(messageId, images) {
             <div class="mes_img_controls">
                 <div title="点击放大" class="right_menu_button fa-lg fa-solid fa-magnifying-glass chat-image-enlarge"></div>
             </div>
-            <img class="mes_img" src="${imgUrl}" alt="${escapeHtml(img.name || '聊天图片')}" title="${escapeHtml(img.name || '聊天图片')}" onerror="chatImagesCleanupStaleImage(this)">
+            <div class="chat-image-frame">
+                <img class="mes_img" src="${imgUrl}" alt="${escapeHtml(img.name || '聊天图片')}" title="${escapeHtml(img.name || '聊天图片')}" onerror="chatImagesCleanupStaleImage(this)">
+            </div>
         </div>`;
         mediaWrapper.append(imageHtml);
     }

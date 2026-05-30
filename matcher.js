@@ -20,11 +20,14 @@ export function performMatch(text) {
 
     const matchedBatches = [];
     const rulesData = getRulesData();
-    let enabledCharSet = (rulesData.charSets || []).find(cs => cs.enabled);
-    let ruleSets = (rulesData.ruleSets || []).filter(s => s.enabled);
-    if (enabledCharSet) {
-        ruleSets = ruleSets.filter(s => s.charSetId === enabledCharSet.id);
-    }
+    // 获取所有已启用的角色集 ID
+    const enabledCharSetIds = (rulesData.charSets || [])
+        .filter(cs => cs.enabled)
+        .map(cs => cs.id);
+    // 规则集：已启用 +（未绑定角色集 或 绑定到已启用的角色集）
+    let ruleSets = (rulesData.ruleSets || []).filter(s =>
+        s.enabled && (!s.charSetId || enabledCharSetIds.includes(s.charSetId))
+    );
     ruleSets.sort((a, b) => (a.order || 0) - (b.order || 0));
 
     const ungroupedRules = enabledRules.filter(r => !r.ruleSetId).sort((a, b) => (a.order || 0) - (b.order || 0));
