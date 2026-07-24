@@ -54,7 +54,7 @@ export async function handleImageUpload(ruleId) {
                     path: result.path,
                     originalName: file.name,
                     name: file.name.replace(/\.[^/.]+$/, ''),
-                    weight: 100,
+                    weight: 50,
                     uploadDate: new Date().toISOString(),
                     fileSize: file.size,
                 };
@@ -125,7 +125,7 @@ export async function handleBatchImageUpload(ruleId) {
                     path: result.path,
                     originalName: file.name,
                     name: file.name.replace(/\.[^/.]+$/, ''),
-                    weight: 100,
+                    weight: 50,
                     uploadDate: new Date().toISOString(),
                     fileSize: file.size,
                 };
@@ -183,7 +183,7 @@ export function chatImageEnlarge(imgEl) {
     // 创建遮罩层
     const overlay = document.createElement('div');
     overlay.className = 'chat-images-enlarge-overlay';
-    overlay.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;height:100dvh;background:rgba(0,0,0,0.9);z-index:99999;display:flex;align-items:center;justify-content:center;overflow:hidden;touch-action:none;';
+    overlay.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;height:100dvh;background:rgba(0,0,0,0.9);z-index:99999;display:flex;align-items:center;justify-content:center;overflow:hidden;touch-action:none;cursor:pointer;';
 
     // 图片容器（用于缩放平移）
     const imgContainer = document.createElement('div');
@@ -192,7 +192,7 @@ export function chatImageEnlarge(imgEl) {
     const enlargedImg = document.createElement('img');
     enlargedImg.src = imgEl.src;
     enlargedImg.className = 'chat-images-enlarged';
-    enlargedImg.style.cssText = 'max-width:95vw;max-height:95vh;max-height:95dvh;width:auto;height:auto;object-fit:contain;border-radius:4px;box-shadow:0 0 20px rgba(0,0,0,0.5);touch-action:none;user-select:none;-webkit-user-drag:none;transform-origin:center center;transition:transform 0.05s ease;';
+    enlargedImg.style.cssText = 'max-width:95vw;max-height:95vh;max-height:95dvh;width:auto;height:auto;object-fit:contain;border-radius:4px;box-shadow:0 0 20px rgba(0,0,0,0.5);touch-action:none;user-select:none;-webkit-user-drag:none;transform-origin:center center;transition:transform 0.05s ease;pointer-events:none;';
 
     // 缩放平移状态
     let scale = 1;
@@ -205,12 +205,10 @@ export function chatImageEnlarge(imgEl) {
     let isPinching = false;
     let isPanning = false;
 
-    // 应用变换
     function applyTransform() {
         enlargedImg.style.transform = `translate(${translateX}px, ${translateY}px) scale(${scale})`;
     }
 
-    // 计算两点距离（用于捏合）
     function getDistance(touches) {
         if (touches.length < 2) return 0;
         const dx = touches[0].clientX - touches[1].clientX;
@@ -218,16 +216,42 @@ export function chatImageEnlarge(imgEl) {
         return Math.sqrt(dx * dx + dy * dy);
     }
 
-    // 计算两点中心
-    function getCenter(touches) {
-        if (touches.length < 2) return { x: 0, y: 0 };
-        return {
-            x: (touches[0].clientX + touches[1].clientX) / 2,
-            y: (touches[0].clientY + touches[1].clientY) / 2,
-        };
+    function resetView(animate = true) {
+        scale = 1;
+        translateX = 0;
+        translateY = 0;
+        enlargedImg.style.transition = animate ? 'transform 0.2s ease' : 'none';
+        applyTransform();
     }
 
-    // 触摸开始
+    // ---- 鼠标滚轮缩放 ----
+    imgContainer.addEventListener('wheel', function (e) {
+        e.preventDefault();
+        const delta = e.deltaY > 0 ? -0.15 : 0.15;
+        const newScale = Math.max(minScale, Math.min(scale + delta, 6));
+        scale = newScale;
+        if (scale <= minScale) resetView();
+        else {
+            enlargedImg.style.transition = 'transform 0.1s ease';
+            applyTransform();
+        }
+    }, { passive: false });
+
+    // ---- 桌面端双击切换缩放 ----
+    let lastClickTime = 0;
+    imgContainer.addEventListener('click', function (e) {
+        if (e.target !== imgContainer) return;
+        const now = Date.now();
+        if (now - lastClickTime < 400) {
+            if (scale > 1) resetView();
+            else { scale = 2.5; enlargedImg.style.transition = 'transform 0.2s ease'; applyTransform(); }
+            lastClickTime = 0;
+        } else {
+            lastClickTime = now;
+        }
+    });
+
+    // ---- 移动端触摸支持（捏合/拖拽/双击） ----
     imgContainer.addEventListener('touchstart', function (e) {
         if (e.touches.length >= 2) {
             e.preventDefault();
@@ -235,17 +259,14 @@ export function chatImageEnlarge(imgEl) {
             isPanning = false;
             lastDist = getDistance(e.touches);
             enlargedImg.style.transition = 'none';
-        } else if (e.touches.length === 1) {
-            if (scale > 1) {
-                isPanning = true;
-                lastTouchX = e.touches[0].clientX;
-                lastTouchY = e.touches[0].clientY;
-                enlargedImg.style.transition = 'none';
-            }
+        } else if (e.touches.length === 1 && scale > 1) {
+            isPanning = true;
+            lastTouchX = e.touches[0].clientX;
+            lastTouchY = e.touches[0].clientY;
+            enlargedImg.style.transition = 'none';
         }
     }, { passive: false });
 
-    // 触摸移动
     imgContainer.addEventListener('touchmove', function (e) {
         if (e.touches.length >= 2 && isPinching) {
             e.preventDefault();
@@ -256,42 +277,26 @@ export function chatImageEnlarge(imgEl) {
             applyTransform();
         } else if (e.touches.length === 1 && isPanning) {
             e.preventDefault();
-            const dx = e.touches[0].clientX - lastTouchX;
-            const dy = e.touches[0].clientY - lastTouchY;
-            translateX += dx;
-            translateY += dy;
+            translateX += e.touches[0].clientX - lastTouchX;
+            translateY += e.touches[0].clientY - lastTouchY;
             lastTouchX = e.touches[0].clientX;
             lastTouchY = e.touches[0].clientY;
             applyTransform();
         }
     }, { passive: false });
 
-    // 触摸结束
     imgContainer.addEventListener('touchend', function (e) {
         if (e.touches.length < 2) {
             isPinching = false;
             enlargedImg.style.transition = 'transform 0.2s ease';
-            // 如果缩回原始大小，也重置位置
-            if (scale <= minScale) {
-                scale = minScale;
-                translateX = 0;
-                translateY = 0;
-                applyTransform();
-            }
-            // 双击检测（点击时间 < 400ms 且没有缩放时放大）
+            if (scale <= minScale) resetView();
+
             if (e.changedTouches.length === 1 && !isPanning) {
                 const now = Date.now();
                 const lastTap = enlargedImg._lastTap || 0;
                 if (now - lastTap < 400) {
-                    if (scale > 1) {
-                        scale = 1;
-                        translateX = 0;
-                        translateY = 0;
-                        applyTransform();
-                    } else {
-                        scale = 2.5;
-                        applyTransform();
-                    }
+                    if (scale > 1) resetView();
+                    else { scale = 2.5; applyTransform(); }
                     enlargedImg._lastTap = 0;
                 } else {
                     enlargedImg._lastTap = now;
@@ -301,38 +306,86 @@ export function chatImageEnlarge(imgEl) {
         }
     }, { passive: false });
 
-    // 鼠标滚轮缩放
-    imgContainer.addEventListener('wheel', function (e) {
-        e.preventDefault();
-        const delta = e.deltaY > 0 ? -0.15 : 0.15;
-        const newScale = Math.max(minScale, Math.min(scale + delta, 6));
-        scale = newScale;
-        if (scale <= minScale) {
-            translateX = 0;
-            translateY = 0;
-        }
-        enlargedImg.style.transition = 'transform 0.1s ease';
-        applyTransform();
-    }, { passive: false });
+    // ---- 关闭按钮 ----
+    const closeBtn = document.createElement('div');
+    closeBtn.innerHTML = '✕';
+    closeBtn.style.cssText = 'position:fixed;top:16px;right:16px;width:36px;height:36px;border-radius:50%;background:rgba(0,0,0,0.5);color:white;font-size:18px;display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:100001;user-select:none;line-height:1;';
+    closeBtn.title = '关闭 (Esc)';
+    ['mousedown', 'mouseup', 'click', 'touchstart', 'touchend'].forEach(function (evt) {
+        closeBtn.addEventListener(evt, function (e) { e.stopPropagation(); });
+    });
+    closeBtn.addEventListener('click', function () { closeOverlay(); });
+    document.body.appendChild(closeBtn);
 
-    // 桌面端：点击切换缩放
-    enlargedImg.addEventListener('click', function (e) {
-        e.stopPropagation();
-        if (scale > 1) {
-            scale = 1;
-            translateX = 0;
-            translateY = 0;
-        } else {
-            scale = 2.5;
+    // ---- 捕获层拦截 ----
+    var isInsideOverlay = function (el) {
+        return el && (el === overlay || el === closeBtn || overlay.contains(el) || closeBtn.contains(el));
+    };
+    var overlayGuard = function (e) {
+        if (!isInsideOverlay(e.target)) e.stopPropagation();
+    };
+    document.addEventListener('mousedown', overlayGuard, true);
+    document.addEventListener('mouseup', overlayGuard, true);
+    document.addEventListener('click', overlayGuard, true);
+    document.addEventListener('touchstart', overlayGuard, true);
+    document.addEventListener('touchend', overlayGuard, true);
+
+    // ---- 遮罩层阻止事件冒泡 ----
+    overlay.addEventListener('mousedown', function (e) { e.stopPropagation(); });
+    overlay.addEventListener('mouseup', function (e) { e.stopPropagation(); });
+    overlay.addEventListener('touchstart', function (e) { e.stopPropagation(); });
+    overlay.addEventListener('touchend', function (e) { e.stopPropagation(); });
+
+    // ---- 点击遮罩层空白区关闭 ----
+    overlay.addEventListener('click', function (e) {
+        if (e.target === overlay) {
+            e.stopPropagation();
+            closeOverlay();
         }
-        enlargedImg.style.transition = 'transform 0.2s ease';
-        applyTransform();
     });
 
-    // 点击遮罩关闭
-    overlay.addEventListener('click', function () {
-        document.body.removeChild(overlay);
+    // ---- 图片容器阻止事件冒泡（未缩放时） ----
+    imgContainer.addEventListener('mousedown', function (e) { if (scale <= 1) e.stopPropagation(); });
+    imgContainer.addEventListener('mouseup', function (e) { if (scale <= 1) e.stopPropagation(); });
+    imgContainer.addEventListener('touchstart', function (e) { if (scale <= 1) e.stopPropagation(); });
+    imgContainer.addEventListener('touchend', function (e) { if (scale <= 1) e.stopPropagation(); });
+
+    // ---- 未缩放时点击容器空白区关闭 ----
+    imgContainer.addEventListener('click', function (e) {
+        if (e.target !== imgContainer) return;
+        if (scale <= 1) {
+            e.stopPropagation();
+            closeOverlay();
+        }
     });
+
+    // ---- 键盘 Esc 关闭 ----
+    function onKeyDown(e) { if (e.key === 'Escape') closeOverlay(); }
+    window.addEventListener('keydown', onKeyDown);
+
+    var allEvents = ['mousedown', 'mouseup', 'click', 'touchstart', 'touchend'];
+
+    function closeOverlay() {
+        window.removeEventListener('keydown', onKeyDown);
+        document.removeEventListener('mousedown', overlayGuard, true);
+        document.removeEventListener('mouseup', overlayGuard, true);
+        document.removeEventListener('click', overlayGuard, true);
+        document.removeEventListener('touchstart', overlayGuard, true);
+        document.removeEventListener('touchend', overlayGuard, true);
+
+        // 闭锁守卫：吸收重派发的事件
+        var closeGuard = function (e) { e.stopPropagation(); e.preventDefault(); };
+        allEvents.forEach(function (evt) { document.addEventListener(evt, closeGuard, true); });
+
+        overlay.style.display = 'none';
+        closeBtn.style.display = 'none';
+        try { if (overlay.parentNode) document.body.removeChild(overlay); } catch (e) {}
+        try { if (closeBtn.parentNode) document.body.removeChild(closeBtn); } catch (e) {}
+
+        requestAnimationFrame(function () {
+            allEvents.forEach(function (evt) { document.removeEventListener(evt, closeGuard, true); });
+        });
+    }
 
     imgContainer.appendChild(enlargedImg);
     overlay.appendChild(imgContainer);

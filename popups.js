@@ -184,7 +184,7 @@ export async function showBatchAddPopup() {
                 if (!allowedTypes.includes(file.type)) continue;
                 const reader = new FileReader();
                 reader.onload = function (ev) {
-                    uploadedImages.push({ file, dataUrl: ev.target.result, weight: 100 });
+                    uploadedImages.push({ file, dataUrl: ev.target.result, weight: 50 });
                     renderBatchThumbs();
                 };
                 reader.readAsDataURL(file);

@@ -2,7 +2,7 @@
 
 import { getContext } from '../../../extensions.js';
 import { getRulesData, getRuleSets, getCharSets, getRuleById, addRule, updateRule, deleteRule, updateRuleSet, deleteRuleSet, addRuleSet, updateCharSet, deleteCharSet, addCharSet, saveSettings, currentSettings } from './data.js';
-import { getImageUrl, handleImageUpload, handleBatchImageUpload, deleteImageFile } from './image.js';
+import { getImageUrl, handleImageUpload, handleBatchImageUpload, deleteImageFile, chatImageEnlarge } from './image.js';
 import { showRegexHelp, showBatchAddPopup, showBatchEditPopup } from './popups.js';
 import { escapeHtml } from './utils.js';
 
@@ -369,6 +369,12 @@ export function bindRuleEvents(ruleElement, rule) {
         rule.images = rule.images.filter(i => i.id !== imageId);
         saveSettings();
         imageItem.remove();
+    });
+
+    // ⭐ 点击图片放大查看
+    ruleElement.on('click', '.rule-image-thumb', function () {
+        const imgEl = this;
+        chatImageEnlarge(imgEl);
     });
 }
 
