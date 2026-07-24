@@ -8,6 +8,23 @@ import { escapeHtml, hexToRgb } from './utils.js';
 // 存储每个消息当前的图片队列定时器
 const imageQueueTimers = new Map();
 
+/** 清除指定消息的轮播定时器 */
+export function clearImageTimer(messageId) {
+    const timer = imageQueueTimers.get(messageId);
+    if (timer) {
+        clearTimeout(timer);
+        imageQueueTimers.delete(messageId);
+    }
+}
+
+/** 清除所有消息的轮播定时器（切换聊天时调用） */
+export function clearAllImageTimers() {
+    for (const [messageId, timer] of imageQueueTimers) {
+        clearTimeout(timer);
+    }
+    imageQueueTimers.clear();
+}
+
 // ==================== 匹配逻辑 ====================
 
 export function performMatch(text) {

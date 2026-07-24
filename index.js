@@ -7,7 +7,7 @@ import { addNavBarDrawer } from './drawer.js';
 import { hexToRgb } from './utils.js';
 import { applySettingsToUI, bindUIEvents } from './rules-ui.js';
 import { chatImageEnlarge } from './image.js';
-import { performMatch } from './matcher.js';
+import { performMatch, clearImageTimer, clearAllImageTimers } from './matcher.js';
 
 // ==================== 生命周期钩子 ====================
 
@@ -40,6 +40,7 @@ export function onDisable() {
     eventSource.removeListener(event_types.MESSAGE_SWIPED, onMessageSwiped);
     eventSource.removeListener(event_types.MESSAGE_UPDATED, onMessageUpdated);
     eventSource.removeListener(event_types.CHAT_LOADED, onChatLoaded);
+    eventSource.removeListener(event_types.CHAT_CHANGED, onChatChanged);
 }
 
 // ==================== 事件监听 ====================
@@ -51,11 +52,13 @@ function registerEventListeners() {
     eventSource.removeListener(event_types.MESSAGE_SWIPED, onMessageSwiped);
     eventSource.removeListener(event_types.MESSAGE_UPDATED, onMessageUpdated);
     eventSource.removeListener(event_types.CHAT_LOADED, onChatLoaded);
+    eventSource.removeListener(event_types.CHAT_CHANGED, onChatChanged);
 
     eventSource.makeLast(event_types.CHARACTER_MESSAGE_RENDERED, onMessageReceived);
     eventSource.on(event_types.MESSAGE_SWIPED, onMessageSwiped);
     eventSource.on(event_types.MESSAGE_UPDATED, onMessageUpdated);
     eventSource.on(event_types.CHAT_LOADED, onChatLoaded);
+    eventSource.on(event_types.CHAT_CHANGED, onChatChanged);
 
     // 点击图片放大（与 MatchScoring 相同方式：直接点击图片）
     $(document).off('click', '.chat-image-queued .mes_img').on('click', '.chat-image-queued .mes_img', function () {
@@ -92,12 +95,25 @@ function onMessageReceived(data) {
 
     if (!message) message = chat[chat.length - 1];
     if (!message || message.is_user) return;
-    if (message.extra?.chatImages?.length) return;
+    if (message.extra?.chatImages?.length) {
+        return;
+    }
 
     const text = message.mes;
     if (!text) return;
 
+    // 记录文本，供后续 onMessageSwiped 判断文本是否变化
+    if (!window._chatImages_lastMesText) window._chatImages_lastMesText = {};
+    const msgId = chat.indexOf(message);
+    if (msgId >= 0) window._chatImages_lastMesText[msgId] = text;
     performMatch(text);
+}
+
+function onChatChanged() {
+    // 切换聊天时：清除所有未完成的轮播定时器，防止操作旧 DOM
+    clearAllImageTimers();
+    // 清除文本历史记录
+    delete window._chatImages_lastMesText;
 }
 
 function onMessageSwiped() {
@@ -109,17 +125,27 @@ function onMessageSwiped() {
 
     if (!lastMsg || lastMsg.is_user) return;
 
-    // 清除该消息的缓存图片
+    // 清除该消息的定时器
+    clearImageTimer(lastMsgId);
+
+    // 清除该消息的缓存图片（确保新回答能触发全新匹配）
     delete lastMsg.extra?.chatImages;
 
     // 从 DOM 中移除旧的图片
     $(`.mes[mesid="${lastMsgId}"]`).find('.chat-image-queued').remove();
 
-    // 消息已有文本 → 缓存滑动（无新生成），立即匹配
-    // 消息无文本 → 新生成中，等 CHARACTER_MESSAGE_RENDERED 再匹配
-    if (lastMsg.mes) {
+    // 判断是缓存翻页还是新生成：
+    // 缓存翻页时文本已更新为新的变体内容，新生成时文本依旧是旧的
+    // 比较当前文本与记录的上次文本，不同则为缓存翻页
+    const prevText = window._chatImages_lastMesText?.[lastMsgId];
+    const textChanged = !!lastMsg.mes && prevText !== undefined && lastMsg.mes !== prevText;
+    if (textChanged) {
         performMatch(lastMsg.mes);
     }
+
+    // 记录当前文本供下次比较
+    if (!window._chatImages_lastMesText) window._chatImages_lastMesText = {};
+    window._chatImages_lastMesText[lastMsgId] = lastMsg.mes;
 }
 
 function onMessageUpdated(messageId) {
@@ -136,6 +162,10 @@ function onMessageUpdated(messageId) {
     // 只处理最后一条消息，避免旧消息编辑时也触发
     if (chat.indexOf(message) !== chat.length - 1) return;
 
+    // 记录文本，供后续 onMessageSwiped 判断文本是否变化
+    if (!window._chatImages_lastMesText) window._chatImages_lastMesText = {};
+    const msgId = chat.indexOf(message);
+    if (msgId >= 0) window._chatImages_lastMesText[msgId] = text;
     performMatch(text);
 }
 
