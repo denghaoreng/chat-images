@@ -289,16 +289,9 @@
 }
 
 .chat-image-frame .mes_img {
-    width: auto !important;
-    height: 100% !important;
-    max-width: 100% !important;
-    max-height: 100% !important;
-    object-fit: contain !important;
-    object-position: center !important;
     border-radius: 0;
-    margin: 0 auto !important;
     display: block !important;
-    position: static !important;
+    margin: 0 auto !important;
 }
 
 .chat-image-queued {

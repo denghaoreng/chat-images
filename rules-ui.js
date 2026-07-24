@@ -408,13 +408,13 @@ export function renderSettingsPanel() {
             </div>
             <div class="flex-container alignitemscenter" style="gap:12px;margin-bottom:10px;">
                 <label style="font-size:0.9em;min-width:50px;font-weight:500;">宽度</label>
-                <input id="chat-images-setting-width" class="text_pole" type="number" min="1" max="600" step="10"
+                <input id="chat-images-setting-width" class="text_pole" type="number" min="20" max="4000" step="10"
                        value="${w}" style="width:100px;text-align:center;font-size:1em;">
                 <span style="font-size:0.85em;opacity:0.6;">px</span>
             </div>
             <div class="flex-container alignitemscenter" style="gap:12px;">
                 <label style="font-size:0.9em;min-width:50px;font-weight:500;">高度</label>
-                <input id="chat-images-setting-height" class="text_pole" type="number" min="1" max="600" step="10"
+                <input id="chat-images-setting-height" class="text_pole" type="number" min="20" max="4000" step="10"
                        value="${h}" style="width:100px;text-align:center;font-size:1em;">
                 <span style="font-size:0.85em;opacity:0.6;">px</span>
             </div>
@@ -443,14 +443,14 @@ export function renderSettingsPanel() {
     // 绑定宽高输入事件
     $('#chat-images-setting-width').on('input', function () {
         const val = parseInt($(this).val());
-        if (!isNaN(val) && val >= 1 && val <= 600) {
+        if (!isNaN(val) && val >= 20 && val <= 4000) {
             currentSettings.imageWidth = val;
             saveSettings();
         }
     });
     $('#chat-images-setting-height').on('input', function () {
         const val = parseInt($(this).val());
-        if (!isNaN(val) && val >= 1 && val <= 600) {
+        if (!isNaN(val) && val >= 20 && val <= 4000) {
             currentSettings.imageHeight = val;
             saveSettings();
         }
