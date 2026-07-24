@@ -14,7 +14,7 @@
 }
 
 .rule-collapsible {
-    overflow: hidden;
+    overflow-y: auto;
     transition: max-height 0.25s ease, opacity 0.2s ease;
     max-height: 600px;
     opacity: 1;
