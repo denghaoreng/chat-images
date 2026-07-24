@@ -1,9 +1,9 @@
 // matcher.js — 匹配引擎：正则匹配、加权随机、图片队列
 
 import { getContext } from '../../../extensions.js';
-import { getEnabledRules, getRulesData } from './data.js';
+import { getEnabledRules, getRulesData, currentSettings, defaultSettings } from './data.js';
 import { getImageUrl, deleteImageFile } from './image.js';
-import { escapeHtml } from './utils.js';
+import { escapeHtml, hexToRgb } from './utils.js';
 
 // 存储每个消息当前的图片队列定时器
 const imageQueueTimers = new Map();
@@ -165,19 +165,22 @@ export function queueBatchesForMessage(messageId, batches) {
                 return;
             }
 
-            const mediaWrapper = messageEl.find('.mes_media_wrapper');
-            if (!mediaWrapper.length) return;
-
+            const imgW = currentSettings.imageWidth ?? defaultSettings.imageWidth;
+            const imgH = currentSettings.imageHeight ?? defaultSettings.imageHeight;
+            const bgColor = currentSettings.frameBackgroundColor ?? defaultSettings.frameBackgroundColor;
+            const bgOpacity = currentSettings.frameBackgroundOpacity ?? defaultSettings.frameBackgroundOpacity;
+            const bgRgb = hexToRgb(bgColor);
             const imageHtml = `
         <div class="mes_media_container mes_img_container chat-image-queued" data-index="${Date.now()}" data-rule-id="${item.ruleId || ''}">
-            <div class="mes_img_controls">
-                <div title="点击放大" class="right_menu_button fa-lg fa-solid fa-magnifying-glass chat-image-enlarge"></div>
-            </div>
-            <div class="chat-image-frame">
+            <div class="chat-image-frame" style="width:${imgW}px;height:${imgH}px;background:rgba(${bgRgb},${bgOpacity});">
                 <img class="mes_img" src="${imgUrl}" alt="${escapeHtml(item.image.name || '聊天图片')}" title="${escapeHtml(item.image.name || '聊天图片')}" onerror="chatImagesCleanupStaleImage(this)">
             </div>
         </div>`;
-            mediaWrapper.append(imageHtml);
+            // 插入到 mes_text 后面（放在消息末尾）
+            const mesText = messageEl.find('.mes_text');
+            if (mesText.length) {
+                mesText.after(imageHtml);
+            }
 
             const { chat, saveChat } = getContext();
             const msg = chat[messageId];

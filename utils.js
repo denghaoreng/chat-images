@@ -14,3 +14,15 @@ export function escapeHtml(text) {
     return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;').replace(/'/g, '&#039;');
 }
+
+/** 将十六进制颜色 #rrggbb 转换为 "r, g, b" 格式 */
+export function hexToRgb(hex) {
+    if (!hex || typeof hex !== 'string') return '240, 228, 228';
+    hex = hex.replace('#', '');
+    if (hex.length !== 6) return '240, 228, 228';
+    const r = parseInt(hex.substring(0, 2), 16);
+    const g = parseInt(hex.substring(2, 4), 16);
+    const b = parseInt(hex.substring(4, 6), 16);
+    if (isNaN(r) || isNaN(g) || isNaN(b)) return '240, 228, 228';
+    return `${r}, ${g}, ${b}`;
+}

@@ -388,6 +388,89 @@ export function updateAddButtons() {
     $('#chat-images-add-ruleset').prop('disabled', !csVal || csVal === '__unbound');
 }
 
+// ==================== 设置面板渲染 ====================
+
+export function renderSettingsPanel() {
+    const container = $('#chat-images-settings-content');
+    const w = currentSettings.imageWidth ?? 400;
+    const h = currentSettings.imageHeight ?? 400;
+    const bgColor = currentSettings.frameBackgroundColor ?? '#000000';
+    const bgOpacity = currentSettings.frameBackgroundOpacity ?? 1;
+
+    const html = `
+    <div style="padding:4px 8px;">
+        <h3 style="margin:0 0 12px 0;font-size:1.05em;padding-bottom:8px;border-bottom:1px solid var(--borderColor);">
+            <i class="fa-solid fa-sliders"></i> 图片显示设置
+        </h3>
+        <div style="margin-bottom:16px;padding:12px;background:var(--white15);border-radius:6px;">
+            <div style="font-size:0.88em;opacity:0.7;margin-bottom:10px;">
+                设置插入到聊天消息中的图片尺寸（单位：像素）
+            </div>
+            <div class="flex-container alignitemscenter" style="gap:12px;margin-bottom:10px;">
+                <label style="font-size:0.9em;min-width:50px;font-weight:500;">宽度</label>
+                <input id="chat-images-setting-width" class="text_pole" type="number" min="1" max="600" step="10"
+                       value="${w}" style="width:100px;text-align:center;font-size:1em;">
+                <span style="font-size:0.85em;opacity:0.6;">px</span>
+            </div>
+            <div class="flex-container alignitemscenter" style="gap:12px;">
+                <label style="font-size:0.9em;min-width:50px;font-weight:500;">高度</label>
+                <input id="chat-images-setting-height" class="text_pole" type="number" min="1" max="600" step="10"
+                       value="${h}" style="width:100px;text-align:center;font-size:1em;">
+                <span style="font-size:0.85em;opacity:0.6;">px</span>
+            </div>
+        </div>
+        <div style="margin-bottom:16px;padding:12px;background:var(--white15);border-radius:6px;">
+            <div style="font-size:0.88em;opacity:0.7;margin-bottom:10px;">
+                设置图片框背景颜色与透明度
+            </div>
+            <div class="flex-container alignitemscenter" style="gap:12px;margin-bottom:10px;">
+                <label style="font-size:0.9em;min-width:50px;font-weight:500;">颜色</label>
+                <input id="chat-images-setting-bg-color" type="color" value="${bgColor}"
+                       style="width:50px;height:32px;padding:0;border:1px solid var(--borderColor);border-radius:4px;cursor:pointer;background:none;">
+                <span style="font-size:0.85em;opacity:0.6;">点击选择颜色</span>
+            </div>
+            <div class="flex-container alignitemscenter" style="gap:12px;">
+                <label style="font-size:0.9em;min-width:50px;font-weight:500;">透明度</label>
+                <input id="chat-images-setting-bg-opacity" class="text_pole" type="number" min="0" max="1" step="0.05"
+                       value="${bgOpacity}" style="width:80px;text-align:center;font-size:0.9em;">
+                <span style="font-size:0.85em;opacity:0.6;">0 ~ 1</span>
+            </div>
+        </div>
+    </div>`;
+
+    container.html(html);
+
+    // 绑定宽高输入事件
+    $('#chat-images-setting-width').on('input', function () {
+        const val = parseInt($(this).val());
+        if (!isNaN(val) && val >= 1 && val <= 600) {
+            currentSettings.imageWidth = val;
+            saveSettings();
+        }
+    });
+    $('#chat-images-setting-height').on('input', function () {
+        const val = parseInt($(this).val());
+        if (!isNaN(val) && val >= 1 && val <= 600) {
+            currentSettings.imageHeight = val;
+            saveSettings();
+        }
+    });
+
+    // 绑定背景颜色事件
+    $('#chat-images-setting-bg-color').on('input', function () {
+        currentSettings.frameBackgroundColor = $(this).val();
+        saveSettings();
+    });
+    // 绑定背景透明度事件
+    $('#chat-images-setting-bg-opacity').on('input', function () {
+        const val = parseFloat($(this).val());
+        if (!isNaN(val) && val >= 0 && val <= 1) {
+            currentSettings.frameBackgroundOpacity = val;
+            saveSettings();
+        }
+    });
+}
+
 export function bindUIEvents() {
     $(document).off('click', '.chat-images-tab').on('click', '.chat-images-tab', function () {
         const tab = $(this).data('tab');
@@ -398,16 +481,25 @@ export function bindUIEvents() {
             $('#chat-images-rules-panel').show();
             $('#chat-images-rulesets-panel').hide();
             $('#chat-images-charsets-panel').hide();
+            $('#chat-images-settings-panel').hide();
             renderRuleList();
         } else if (tab === 'rulesets') {
             $('#chat-images-rules-panel').hide();
             $('#chat-images-rulesets-panel').show();
             $('#chat-images-charsets-panel').hide();
+            $('#chat-images-settings-panel').hide();
             renderRuleSetList();
+        } else if (tab === 'settings') {
+            $('#chat-images-rules-panel').hide();
+            $('#chat-images-rulesets-panel').hide();
+            $('#chat-images-charsets-panel').hide();
+            $('#chat-images-settings-panel').show();
+            renderSettingsPanel();
         } else {
             $('#chat-images-rules-panel').hide();
             $('#chat-images-rulesets-panel').hide();
             $('#chat-images-charsets-panel').show();
+            $('#chat-images-settings-panel').hide();
             renderCharSetList();
         }
     });

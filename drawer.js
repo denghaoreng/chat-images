@@ -1,6 +1,6 @@
 // drawer.js — 导航栏抽屉
 
-import { renderRuleList, renderRuleSetList, renderCharSetList, populateRuleSetDropdown, populateRuleSetCharDropdown, updateAddButtons } from './rules-ui.js';
+import { renderRuleList, renderRuleSetList, renderCharSetList, renderSettingsPanel, populateRuleSetDropdown, populateRuleSetCharDropdown, updateAddButtons } from './rules-ui.js';
 
 export function addNavBarDrawer() {
     if ($('#chat-images-drawer').length) return;
@@ -16,6 +16,7 @@ export function addNavBarDrawer() {
                     <span class="chat-images-tab chat-images-tab-active" data-tab="charsets" style="flex:1;text-align:center;padding:6px 0;cursor:pointer;font-size:0.9em;border-bottom:2px solid var(--primary);">角色集</span>
                     <span class="chat-images-tab" data-tab="rulesets" style="flex:1;text-align:center;padding:6px 0;cursor:pointer;font-size:0.9em;color:var(--grey40);">规则集</span>
                     <span class="chat-images-tab" data-tab="rules" style="flex:1;text-align:center;padding:6px 0;cursor:pointer;font-size:0.9em;color:var(--grey40);">规则</span>
+                    <span class="chat-images-tab" data-tab="settings" style="flex:1;text-align:center;padding:6px 0;cursor:pointer;font-size:0.9em;color:var(--grey40);">设置</span>
                     <span id="chat-images-close-drawer" class="fa-solid fa-xmark menu_button menu_button_icon" style="margin-left:4px;"></span>
                 </div>
                 <div id="chat-images-rules-panel" style="display:none;">
@@ -83,6 +84,9 @@ export function addNavBarDrawer() {
                     </div>
                     <div id="chat-images-char-set-list" class="margin5"></div>
                 </div>
+                <div id="chat-images-settings-panel" style="display:none;">
+                    <div id="chat-images-settings-content" style="padding:8px;"></div>
+                </div>
             </div>
         </div>
     </div>`;
@@ -97,19 +101,21 @@ export function addNavBarDrawer() {
             const tab = window.lastActiveTab || 'charsets';
             $('.chat-images-tab').removeClass('chat-images-tab-active').css('border-bottom', '2px solid transparent').css('color', 'var(--grey40)');
             $(`.chat-images-tab[data-tab="${tab}"]`).addClass('chat-images-tab-active').css('border-bottom', '2px solid var(--primary)').css('color', '');
-            $('#chat-images-rules-panel, #chat-images-rulesets-panel, #chat-images-charsets-panel').hide();
+            $('#chat-images-rules-panel, #chat-images-rulesets-panel, #chat-images-charsets-panel, #chat-images-settings-panel').hide();
             $(`#chat-images-${tab}-panel`).show();
             if (tab === 'rules') {
                 renderRuleList();
             } else if (tab === 'rulesets') {
                 populateRuleSetCharDropdown();
                 renderRuleSetList();
+            } else if (tab === 'settings') {
+                renderSettingsPanel();
             } else {
                 populateRuleSetDropdown();
                 populateRuleSetCharDropdown();
                 renderCharSetList();
             }
-            updateAddButtons();
+            if (tab !== 'settings') updateAddButtons();
         }
     });
 

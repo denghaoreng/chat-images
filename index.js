@@ -2,8 +2,9 @@
 // 负责导入各子模块、声明生命周期钩子、绑定事件监听
 
 import { getContext, renderExtensionTemplateAsync } from '../../../extensions.js';
-import { loadSettings, saveSettings, currentSettings, MODULE_NAME } from './data.js';
+import { loadSettings, saveSettings, currentSettings, MODULE_NAME, defaultSettings } from './data.js';
 import { addNavBarDrawer } from './drawer.js';
+import { hexToRgb } from './utils.js';
 import { applySettingsToUI, bindUIEvents } from './rules-ui.js';
 import { chatImageEnlarge } from './image.js';
 import { performMatch } from './matcher.js';
@@ -56,23 +57,9 @@ function registerEventListeners() {
     eventSource.on(event_types.MESSAGE_UPDATED, onMessageUpdated);
     eventSource.on(event_types.CHAT_LOADED, onChatLoaded);
 
-    // 自定义图片放大
-    $(document).off('click', '.chat-image-enlarge').on('click', '.chat-image-enlarge', function () {
-        const imgEl = $(this).closest('.mes_media_container').find('.mes_img')[0];
-        chatImageEnlarge(imgEl);
-    });
-
-    // 双击/双指点击放大（兼容移动端）
+    // 点击图片放大（与 MatchScoring 相同方式：直接点击图片）
     $(document).off('click', '.chat-image-queued .mes_img').on('click', '.chat-image-queued .mes_img', function () {
-        const img = this;
-        const now = Date.now();
-        const lastTap = img._lastTap || 0;
-        if (now - lastTap < 400) {
-            chatImageEnlarge(img);
-            img._lastTap = 0;
-        } else {
-            img._lastTap = now;
-        }
+        chatImageEnlarge(this);
     });
 }
 
@@ -160,24 +147,27 @@ function renderImagesInDom(messageId, images) {
     const messageEl = $(`.mes[mesid="${messageId}"]`);
     if (!messageEl.length) return;
 
-    let mediaWrapper = messageEl.find('.mes_media_wrapper');
-    if (!mediaWrapper.length) return;
-
     for (const img of images) {
         const imgUrl = img.url || (img.path ? (img.path.startsWith('/') ? img.path : '/' + img.path) : '');
         if (!imgUrl) continue;
-        if (mediaWrapper.find(`img[src="${imgUrl}"]`).length) continue;
+        if (messageEl.find(`img[src="${imgUrl}"]`).length) continue;
 
+        const imgW = currentSettings.imageWidth ?? defaultSettings.imageWidth;
+        const imgH = currentSettings.imageHeight ?? defaultSettings.imageHeight;
+        const bgColor = currentSettings.frameBackgroundColor ?? defaultSettings.frameBackgroundColor;
+        const bgOpacity = currentSettings.frameBackgroundOpacity ?? defaultSettings.frameBackgroundOpacity;
+        const bgRgb = hexToRgb(bgColor);
         const imageHtml = `
         <div class="mes_media_container mes_img_container chat-image-queued" data-index="${Date.now()}">
-            <div class="mes_img_controls">
-                <div title="点击放大" class="right_menu_button fa-lg fa-solid fa-magnifying-glass chat-image-enlarge"></div>
-            </div>
-            <div class="chat-image-frame">
+            <div class="chat-image-frame" style="width:${imgW}px;height:${imgH}px;background:rgba(${bgRgb},${bgOpacity});">
                 <img class="mes_img" src="${imgUrl}" alt="${escapeHtml(img.name || '聊天图片')}" title="${escapeHtml(img.name || '聊天图片')}" onerror="chatImagesCleanupStaleImage(this)">
             </div>
         </div>`;
-        mediaWrapper.append(imageHtml);
+        // 插入到 mes_text 后面（放在消息末尾）
+        const mesText = messageEl.find('.mes_text');
+        if (mesText.length) {
+            mesText.after(imageHtml);
+        }
     }
 }
 

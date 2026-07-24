@@ -276,14 +276,13 @@
 /* 图片插入到消息后由 SillyTavern 自带样式渲染，无需额外样式 */
 
 /* --- 图片固定框（防抖动+居中） --- */
+/* 宽高与背景由 inline style 动态控制（来自设置面板），此处只保留基础样式 */
 .chat-image-frame {
-    height: 180px;
     display: flex !important;
-    align-items: center !important;
+    align-items: flex-start !important;
     justify-content: center !important;
     overflow: hidden;
     border-radius: 4px;
-    background: rgba(0, 0, 0, 0.05);
     margin: 0;
     padding: 0;
     box-sizing: border-box;
@@ -295,23 +294,19 @@
     max-width: 100% !important;
     max-height: 100% !important;
     object-fit: contain !important;
+    object-position: center !important;
     border-radius: 0;
     margin: 0 auto !important;
     display: block !important;
     position: static !important;
 }
 
-/* 图片容器在消息中居中 */
-.mes_media_wrapper {
-    text-align: center !important;
-}
-
 .chat-image-queued {
-    display: inline-block !important;
+    display: table !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
     text-align: center !important;
     width: auto !important;
-    max-width: 400px !important;
     float: none !important;
     clear: both !important;
-    vertical-align: top !important;
 }

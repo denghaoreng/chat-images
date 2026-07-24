@@ -9,6 +9,10 @@ export const defaultSettings = Object.freeze({
     enabled: true,
     autoDetect: true,
     showInChat: true,
+    imageWidth: 400,
+    imageHeight: 400,
+    frameBackgroundColor: '#000000',
+    frameBackgroundOpacity: 1,
     rulesData: {
         version: 1,
         charSets: [],
